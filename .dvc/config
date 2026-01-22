@@ -1,0 +1,4 @@
+[core]
+    remote = vmstorage
+['remote "vmstorage"']
+    url = ssh://mrybczynski@sigma:/data
