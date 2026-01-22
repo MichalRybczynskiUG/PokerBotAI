@@ -9,3 +9,4 @@ scikit-learn
 dvc
 dvc-ssh
 seaborn
+plotly
