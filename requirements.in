@@ -7,4 +7,4 @@ jupyter
 jupytext
 scikit-learn
 dvc
-dvc[rclone]
+dvc-ssh
