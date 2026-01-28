@@ -158,8 +158,6 @@ class PokerEngine:
         self.next_player()
 
 
-
-
 def build_pots(players) -> list:
 
     pots = []
@@ -191,176 +189,173 @@ def build_pots(players) -> list:
     return pots
 
 
-def play_hand(p1, p2, dealer) -> None:
+PREFLOP = 0
+FLOP = 1
+TURN = 2
+RIVER = 3
+SHOWDOWN = 4
 
-    # Ustal pozycje
-    if dealer == p1:
-        sb = p1
-        bb = p2
-    else:
-        sb = p2
-        bb = p1
+class PokerEnv:
+    def __init__(self, stack_size=1000):
+        self.p1 = Player("P1", stack_size)
+        self.p2 = Player("P2", stack_size)
+        self.players = [self.p1, self.p2]
 
-    sb.position = "SB / BTN"
-    bb.position = "BB"
+        self.engine = None
+        self.deck = None
+        self.board = []
+        self.street = PREFLOP
+        self.done = False
 
-    # Przygotuj talię
-    deck = create_deck()
-    random.shuffle(deck)
+        self.current_player = None
+        self.last_stacks = None
 
-    # Reset
-    for p in (p1, p2):
-        p.reset()
+    def reset(self):
+        # reset graczy
+        for p in self.players:
+            p.reset()
 
-    pot = 0
+        self.board = []
+        self.street = PREFLOP
+        self.done = False
 
-    # --- Blindy ---
-    sb_amount = min(SMALL_BLIND, sb.stack)
-    bb_amount = min(BIG_BLIND, bb.stack)
+        # deck
+        self.deck = create_deck()
+        random.shuffle(self.deck)
 
-    sb.stack -= sb_amount
-    bb.stack -= bb_amount
+        # rozdanie
+        for p in self.players:
+            p.hand = [deal_card(self.deck), deal_card(self.deck)]
 
-    sb.bet = sb_amount
-    bb.bet = bb_amount
+        # blindy
+        sb, bb = self.players
+        sb.stack -= SMALL_BLIND
+        bb.stack -= BIG_BLIND
 
-    sb.street_bet = sb_amount
-    bb.street_bet = bb_amount
+        sb.bet = sb.street_bet = SMALL_BLIND
+        bb.bet = bb.street_bet = BIG_BLIND
 
-    pot += sb_amount + bb_amount
+        self.engine = PokerEngine([sb, bb])
+        self.engine.pot = SMALL_BLIND + BIG_BLIND
+        self.engine.to_call = BIG_BLIND
 
-    to_call = bb.bet
+        self.current_player = sb
+        self.last_stacks = {p: p.stack for p in self.players}
 
-    print(f"{sb.name} ({sb.position}) stawia SB = {sb_amount}")
-    print(f"{bb.name} ({bb.position}) stawia BB = {bb_amount}")
+        return self._get_observation(self.current_player)
 
+    def legal_actions(self):
+        return get_legal_actions(self.current_player, self.engine.to_call)
 
-    # Rozdaj karty
-    p1.hand = [deal_card(deck), deal_card(deck)]
-    p2.hand = [deal_card(deck), deal_card(deck)]
+    def step(self, action, raise_amount=None):
+        if self.done:
+            raise RuntimeError("Hand already finished")
 
-    print("\n=== Rozdanie ===")
+        prev_stack = self.current_player.stack
 
-    # Preflop
-    print("\n=== Preflop ===")
-    pot, to_call = betting_round([sb, bb], pot, to_call)
+        self.engine.step_betting(action, raise_amount)
 
-    if p1.folded or p2.folded:
-        winner = p1 if not p1.folded else p2
-        winner.stack += pot
-        print(f"\n{winner.name} zgarnia pulę {pot} (drugi spasował).")
-        return
+        # aktualizacja current_player
+        self.current_player = self.engine.players[self.engine.current_player_idx]
 
-    # Flop
-    board = [deal_card(deck), deal_card(deck), deal_card(deck)]
-    print("\n=== Flop ===")
-    print("Board:", board)
-    for p in (p1, p2):
-        p.street_bet = 0
-    pot, to_call = betting_round([bb, sb], pot, 0)
+        # sprawdzamy koniec rundy
+        if self.engine.betting_round_finished():
+            self._advance_street()
 
-    if p1.folded or p2.folded:
-        winner = p1 if not p1.folded else p2
-        winner.stack += pot
-        print(f"\n{winner.name} zgarnia pulę {pot} (drugi spasował).")
-        return
+        reward = self.current_player.stack - prev_stack
+        obs = self._get_observation(self.current_player)
 
-    # Turn
-    board.append(deal_card(deck))
-    print("\n=== Turn ===")
-    print("Board:", board)
-    for p in (p1, p2):
-        p.street_bet = 0
-    pot, to_call = betting_round([bb, sb], pot, 0)
+        return obs, reward, self.done, {}
 
-    if p1.folded or p2.folded:
-        winner = p1 if not p1.folded else p2
-        winner.stack += pot
-        print(f"\n{winner.name} zgarnia pulę {pot} (drugi spasował).")
-        return
+    def _advance_street(self):
+        for p in self.players:
+            p.street_bet = 0
 
-    # River
-    board.append(deal_card(deck))
-    print("\n=== River ===")
-    print("Board:", board)
-    for p in (p1, p2):
-        p.street_bet = 0
-    pot, to_call = betting_round([bb, sb], pot, 0)
+        if self.street == PREFLOP:
+            self.board = [deal_card(self.deck) for _ in range(3)]
+            self.street = FLOP
 
-    if p1.folded or p2.folded:
-        winner = p1 if not p1.folded else p2
-        winner.stack += pot
-        print(f"\n{winner.name} zgarnia pulę {pot} (drugi spasował).")
-        return
+        elif self.street == FLOP:
+            self.board.append(deal_card(self.deck))
+            self.street = TURN
 
-    # Showdown
-    print("\n=== Showdown ===")
+        elif self.street == TURN:
+            self.board.append(deal_card(self.deck))
+            self.street = RIVER
 
-    from src.PokerEnv.hand_eval import evaluate_hand
+        elif self.street == RIVER:
+            self._showdown()
+            return
 
-    score1 = evaluate_hand(p1.hand, board)
-    score2 = evaluate_hand(p2.hand, board)
+        self.engine.actions_without_raise = 0
+        self.engine.to_call = 0
 
-    print(f"{p1.name}: {p1.hand}, wynik = {score1}")
-    print(f"{p2.name}: {p2.hand}, wynik = {score2}")
+    def _showdown(self):
+        from PokerBotAI.src.poker_enviroment.hand_eval import evaluate_hand
 
-    # --- SIDE POTS ---
-    pots = build_pots([p1, p2])
+        # ocena rąk TYLKO raz
+        scores = {
+            p: evaluate_hand(p.hand, self.board)
+            for p in self.players
+            if not p.folded
+        }
 
-    print("\nPule:")
-    for i, pot_info in enumerate(pots):
-        names = ", ".join(p.name for p in pot_info["eligible"])
-        print(f"  Pula {i + 1}: {pot_info['amount']} (gracze: {names})")
+        pots = build_pots(self.players)
 
-    # oceny rąk
-    scores = {
-        p1: score1,
-        p2: score2
-    }
+        for pot in pots:
+            amount = pot["amount"]
 
-    # rozdzielanie pul
-    for pot_info in pots:
-        eligible = [p for p in pot_info["eligible"] if not p.folded]
+            # tylko gracze:
+            # 1) którzy są eligible do tej puli
+            # 2) którzy nie spasowali
+            eligible = [
+                p for p in pot["eligible"]
+                if not p.folded
+            ]
 
-        # wybieramy zwycięzcę puli
-        best_score = max(scores[p] for p in eligible)
-        winners = [p for p in eligible if scores[p] == best_score]
+            if not eligible:
+                continue  # teoretycznie nie powinno się zdarzyć
 
-        share = pot_info["amount"] // len(winners)
-        remainder = pot_info["amount"] % len(winners)
+            # najlepsza ręka w tej puli
+            best_score = max(scores[p] for p in eligible)
 
-        for w in winners:
-            w.stack += share
-            print(f"{w.name} wygrywa {share} z tej puli.")
+            winners = [
+                p for p in eligible
+                if scores[p] == best_score
+            ]
 
-        if remainder > 0:
-            winners[0].stack += remainder
+            share = amount // len(winners)
+            remainder = amount % len(winners)
+
+            for w in winners:
+                w.stack += share
+
+            # reszta żetonów (odd chip) — standardowo pierwszy gracz
+            if remainder > 0:
+                winners[0].stack += remainder
+
+        self.done = True
+
+    def _get_observation(self, player):
+        opp = self.p1 if player is self.p2 else self.p2
+
+        return {
+            "hand": player.hand,
+            "board": self.board.copy(),
+            "stack_self": player.stack,
+            "stack_opp": opp.stack,
+            "pot": self.engine.pot,
+            "to_call": self.engine.to_call,
+            "street": self.street,
+            "legal_actions": self.legal_actions()
+        }
 
 
 def main():
-    print("Minimalny Poker NL Hold’em — 1v1")
+    env = PokerEnv()
+    obs = env.reset()
 
-    p1_name = input("Podaj nazwę gracza 1: ")
-    p2_name = input("Podaj nazwę gracza 2: ")
-
-    p1 = Player(p1_name)
-    p2 = Player(p2_name)
-
-    dealer = p1  # p1 zaczyna jako dealer
-
-    while True:
-        play_hand(p1, p2, dealer)
-
-        # zmiana dealera
-        dealer = p2 if dealer == p1 else p1
-
-        print(f"\nStacki: {p1.name}: {p1.stack} | {p2.name}: {p2.stack}")
-
-        cont = input("\nCzy rozdać kolejną rękę? (t/n): ").lower()
-        if cont != "t":
-            print("Dzięki za grę!")
-            break
-
+    
 
 if __name__ == "__main__":
     main()
