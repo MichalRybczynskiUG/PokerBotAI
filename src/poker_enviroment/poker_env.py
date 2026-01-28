@@ -7,6 +7,17 @@ SMALL_BLIND = 5
 BIG_BLIND = 10
 MIN_RAISE = BIG_BLIND
 
+ACTION_FOLD = 0
+ACTION_CALL = 1
+ACTION_RAISE = 2
+ACTION_ALL_IN = 3
+
+ACTION_NAMES = {
+    0: "fold",
+    1: "call/check",
+    2: "raise",
+    3: "all-in"
+}
 
 def create_deck() -> list[str]:
     return [r + s for r, s in itertools.product(RANKS, SUITS)]
@@ -32,162 +43,122 @@ class Player:
         self.all_in = False
         self.street_bet = 0
 
-
 def get_legal_actions(player, to_call) -> list[str]:
 
     actions = []
 
     # Fold zawsze możliwy (jeśli jest bet)
     if to_call > player.street_bet:
-        actions.append("f")
+        actions.append(ACTION_FOLD)
 
     # Call tylko jeśli jest co callować
     if to_call > player.street_bet and player.stack > 0:
-        actions.append("c")
+        actions.append(ACTION_CALL)
 
     # Check tylko jeśli nic nie trzeba dopłacać
     if to_call == player.street_bet:
-        actions.append("c") #check
+        actions.append(ACTION_CALL) #check
 
     # Raise tylko jeśli gracz ma środki
     if player.stack > (to_call - player.street_bet):
-        actions.append("r")
+        actions.append(ACTION_RAISE)
 
     # All-in zawsze możliwy jeśli gracz ma stack
     if player.stack > 0:
-        actions.append("a")
+        actions.append(ACTION_ALL_IN)
 
     return actions
 
-def betting_finished(players, actions_without_raise, players_in_hand) -> bool:
 
-    for p in players:
-        if p.folded:
-            continue
-        #if not p.all_in and p.street_bet != to_call:
-        if not p.all_in and actions_without_raise >= len(players_in_hand):
-            return False
-    return True
+class PokerEngine:
+    def __init__(self, players):
+        self.players = players
+        self.pot = 0
+        self.to_call = 0
+        self.current_player_idx = 0
+        self.actions_without_raise = 0
 
-def betting_round(players, pot, to_call) -> tuple[int, int]:
+    def next_player(self):
+        self.current_player_idx = (self.current_player_idx + 1) % len(self.players)
 
-    actions_without_raise = 0
-    players_in_hand = [p for p in players if not p.folded and not p.all_in]
+    def betting_round_finished(self):
+        active = [p for p in self.players if not p.folded and not p.all_in]
 
-    # Jeśli wszyscy są all-in lub fold → brak licytacji
-    if all(p.all_in or p.folded for p in players):
-        return pot, to_call
+        if len(active) <= 1:
+            return True
 
-    idx = 0  # indeks aktualnego gracza
+        if self.actions_without_raise >= len(active):
+            return True
 
-    while True:
-        p = players[idx % len(players)]
-        idx += 1
+        return False
+
+    def step_betting(self, action, raise_amount=None):
+        p = self.players[self.current_player_idx]
 
         if p.folded or p.all_in:
-            # pomijamy graczy bez akcji
-            if betting_finished(players, actions_without_raise, players_in_hand):
-                break
-            continue
+            self.next_player()
+            return
 
-        print(f"\n--- Tura gracza {p.name} ({p.position}) ---")
-        print(f"Karty: {p.hand[0]}  {p.hand[1]}")
-        print(f"Stack: {p.stack}")
-        print(f"Pot: {pot}")
-        print(f"Do sprawdzenia: {to_call - p.street_bet}")
-        print(f"to_call: {to_call}")
-        print(f"p.street_bet: {p.street_bet}")
-
-        legal_actions = get_legal_actions(p, to_call)
-        print("Akcje:", ", ".join(legal_actions))
-
-        while True:
-            action = input("Wybierz akcję: ").strip().lower()
-            if action in legal_actions:
-                break
-            print("Nielegalna akcja. Spróbuj ponownie.")
+        legal = get_legal_actions(p, self.to_call)
+        if action not in legal:
+            raise ValueError("Illegal action")
 
         # --- FOLD ---
-        if action == "f":
+        if action == ACTION_FOLD:
             p.folded = True
-            print(f"{p.name} spasował.")
-            return pot, to_call
 
         # --- CALL / CHECK ---
-        elif action == "c":
-            call_amount = max(0, to_call - p.street_bet) # call_amount nie może być ujemne
-            call_amount = min(call_amount, p.stack) # call_amount nie może być większe niż stack
+        elif action == ACTION_CALL:
+            call_amount = max(0, self.to_call - p.street_bet)  # call_amount nie może być ujemne
+            call_amount = min(call_amount, p.stack)  # call_amount nie może być większe niż stack
 
             p.stack -= call_amount
             p.bet += call_amount
             p.street_bet += call_amount
-            pot += call_amount
-            actions_without_raise += 1
+            self.pot += call_amount
+            self.actions_without_raise += 1
 
             if p.stack == 0:
                 p.all_in = True
-                print(f"{p.name} sprawdził i jest all-in!")
 
         # --- RAISE ---
-        elif action == "r":
-            while True:
-                try:
-                    raise_amount = int(input(f"Kwota raise (min {MIN_RAISE}): "))
-                    if raise_amount < MIN_RAISE:
-                        print("Raise za mały.")
-                        continue
-                    break
-                except:
-                    print("Podaj liczbę.")
+        elif action == ACTION_RAISE:
+            if raise_amount is None:
+                raise ValueError("Raise requires raise_amount")
 
-            call_amount = max(0, to_call - p.street_bet)
+            call_amount = max(0, self.to_call - p.street_bet)
             total = call_amount + raise_amount
 
             if total >= p.stack:
-                print(f"{p.name} przebija all-in!")
-                pot += p.stack
-                p.bet += p.stack
-                p.street_bet += p.stack
-                p.stack = 0
+                total = p.stack
                 p.all_in = True
-            else:
-                p.stack -= total
-                p.bet += total
-                p.street_bet += total
-                pot += total
 
-            #to_call = p.bet
-            to_call = p.street_bet
-            actions_without_raise = 0
-            continue  #po raise NIE sprawdzamy końca rundy
+            p.stack -= total
+            p.bet += total
+            p.street_bet += total
+            self.pot += total
+
+            self.to_call = p.street_bet
+            self.actions_without_raise = 0
+            # po raisie nie sprawdzamy końca  rundy
 
         # --- ALL-IN ---
-        elif action == "a":
-            all_in_amount = p.stack
-            print(f"{p.name} wchodzi all-in za {all_in_amount}!")
-
-
-
+        elif action == ACTION_ALL_IN:
+            amount = p.stack
             p.stack = 0
-            p.bet += all_in_amount
-            p.street_bet += all_in_amount
-            pot += all_in_amount
+            p.bet += amount
+            p.street_bet += amount
+            self.pot += amount
             p.all_in = True
 
-            if p.bet > to_call:
-                #to_call = p.bet
-                to_call = p.street_bet
-                actions_without_raise = 0
-                continue  # all-in jako raise → kolejka od nowa
+            if p.street_bet > self.to_call:
+                self.to_call = p.street_bet
+                self.actions_without_raise = 0
 
-        # Po akcji sprawdzamy, czy runda może się skończyć
-        if betting_finished(players, actions_without_raise, players_in_hand):
-            break
+        self.next_player()
 
-        #if actions_without_raise >= len(players_in_hand):
-        #    break
 
-    return pot, to_call
+
 
 def build_pots(players) -> list:
 
