@@ -15,163 +15,28 @@
 # %%
 import random
 import time
-from tqdm import tqdm
 import pickle
+import numpy as np
+from pathlib import Path
 from itertools import combinations
 from collections import defaultdict
+from tqdm import tqdm
 
-import numpy as np
 from sklearn.cluster import KMeans
+
 from treys import Card, Evaluator
 
-
-# %%
-def turn_features_solver(card1, card2, card3, card4):
-    cards = [card1, card2, card3, card4]
-
-    # --- ranks and suits ---
-    ranks = sorted(
-        (Card.get_rank_int(c) for c in cards),
-        reverse=True
-    )
-    suits = [Card.get_suit_int(c) for c in cards]
-
-    high, mid1, mid2, low = ranks
-
-    # --- rank statistics ---
-    average_rank = sum(ranks) / 4.0
-    broadway_count = sum(r >= 8 for r in ranks)   # T,J,Q,K,A
-    has_ace = int(high == 12)
-
-    # --- multiplicities ---
-    rank_counts = {r: ranks.count(r) for r in set(ranks)}
-    counts_sorted = sorted(rank_counts.values(), reverse=True)
-
-    is_quads = int(4 in counts_sorted)
-    is_trips = int(3 in counts_sorted)
-    is_paired = int(2 in counts_sorted)
-    is_two_pair = int(counts_sorted.count(2) == 2)
-
-    paired_board_strength = (
-        3 if is_quads else
-        2 if is_trips else
-        1 if is_two_pair or is_paired else
-        0
-    )
-
-    # --- gaps / connectivity ---
-    gaps = [ranks[i] - ranks[i+1] for i in range(3)]
-    max_gap = max(gaps)
-
-    connectivity_quality = (
-        3 if max_gap <= 1 else
-        2 if max_gap == 2 else
-        1 if max_gap == 3 else
-        0
-    )
-
-    # --- straight analysis ---
-    unique_ranks = sorted(set(ranks), reverse=True)
-
-    straight_made = int(
-        len(unique_ranks) == 4 and
-        unique_ranks[0] - unique_ranks[3] == 3
-    )
-
-    straight_draw_potential = max(
-        0,
-        sum(4 - g for g in gaps)
-    )
-
-    nut_straight_possible = int(
-        straight_made and high >= 9
-    )
-
-    # --- flush analysis ---
-    suit_counts = {s: suits.count(s) for s in set(suits)}
-    max_suit = max(suit_counts.values())
-
-    flush_made = int(max_suit == 4)
-    flush_draw = int(max_suit == 3)
-
-    ace_suited_on_board = int(
-        has_ace and max_suit >= 3
-    )
-
-    nut_flush_possible = int(flush_made and ace_suited_on_board)
-
-    # --- broadway texture ---
-    broadway_connectivity = (
-        2 if broadway_count >= 3 and high - low <= 4 else
-        1 if broadway_count >= 2 else
-        0
-    )
-
-    # --- board dynamics ---
-    is_dynamic = int(
-        straight_draw_potential +
-        flush_draw +
-        connectivity_quality >= 7
-    )
-
-    # --- nut density proxy ---
-    nut_density = (
-        broadway_connectivity +
-        straight_made +
-        flush_made +
-        nut_straight_possible +
-        nut_flush_possible
-    )
-
-    return np.array([
-        # rank structure
-        high,
-        mid1,
-        mid2,
-        low,
-        average_rank,
-        broadway_count,
-        has_ace,
-
-        # pairing
-        paired_board_strength,
-        is_two_pair,
-        is_trips,
-        is_quads,
-
-        # connectivity
-        max_gap,
-        connectivity_quality,
-
-        # straights
-        straight_made,
-        straight_draw_potential,
-        nut_straight_possible,
-
-        # flushes
-        flush_made,
-        flush_draw,
-        ace_suited_on_board,
-        nut_flush_possible,
-
-        # broadway texture
-        broadway_connectivity,
-
-        # dynamics / nuts
-        is_dynamic,
-        nut_density,
-    ], dtype=float)
-
+from board_features import extract_turn_board_features
 
 
 # %%
-def all_turn_vectors_solver():
+def all_turn_feature_extractors():
     deck = [Card.new(r + s) for r in "23456789TJQKA" for s in "shdc"]
     vecs, turns = [], []
 
     for c1, c2, c3, c4 in combinations(deck, 4):
         vecs.append(
-            turn_features_solver(c1, c2, c3, c4)
+            extract_turn_board_features(c1, c2, c3, c4)
         )
         turns.append((c1, c2, c3, c4))
 
@@ -183,14 +48,16 @@ def all_turn_vectors_solver():
 # 1. HAND CLASSES (169)
 # =========================================================
 
-def rank_int_to_char(r):
-    return RANK_CHARS[r]
+def rank_int_to_char(r, rank_chars):
+    return rank_chars[r]
 
-def hand_class_key(card1, card2):
+
+def hand_class_key(card1, card2, rank_chars):
     r1, r2 = Card.get_rank_int(card1), Card.get_rank_int(card2)
     s1, s2 = Card.get_suit_int(card1), Card.get_suit_int(card2)
 
-    c1, c2 = rank_int_to_char(r1), rank_int_to_char(r2)
+    c1 = rank_int_to_char(r1, rank_chars)
+    c2 = rank_int_to_char(r2, rank_chars)
 
     if r1 == r2:
         return c1 + c2
@@ -203,20 +70,20 @@ def hand_class_key(card1, card2):
     return c1 + c2 + ('s' if s1 == s2 else 'o')
 
 
-def build_hand_classes():
-    deck = [Card.new(r + s) for r in RANK_CHARS for s in "shdc"]
+def build_hand_classes(rank_chars):
+    deck = [Card.new(r + s) for r in rank_chars for s in "shdc"]
     class_to_hands = defaultdict(list)
 
     for c1, c2 in combinations(deck, 2):
-        key = hand_class_key(c1, c2)
+        key = hand_class_key(c1, c2, rank_chars)
         class_to_hands[key].append((c1, c2))
 
     ordered = []
-    for hi in reversed(RANK_CHARS):
-        for lo in reversed(RANK_CHARS):
+    for hi in reversed(rank_chars):
+        for lo in reversed(rank_chars):
             if hi == lo:
                 ordered.append(hi + lo)
-            elif RANK_CHARS.index(hi) > RANK_CHARS.index(lo):
+            elif rank_chars.index(hi) > rank_chars.index(lo):
                 ordered.append(hi + lo + 's')
                 ordered.append(hi + lo + 'o')
 
@@ -226,9 +93,9 @@ def build_hand_classes():
 # 3. SINGLE TURN RUNOUT (ONLY RIVER)
 # =========================================================
 
-def simulate_turn_runout(hero_hand, board4):
+def simulate_turn_runout(hero_hand, board4, deck_all, evaluator):
     used = set(board4) | set(hero_hand)
-    remaining = [c for c in DECK_ALL if c not in used]
+    remaining = [c for c in deck_all if c not in used]
 
     opp_hand = random.sample(remaining, 2)
     used |= set(opp_hand)
@@ -237,7 +104,7 @@ def simulate_turn_runout(hero_hand, board4):
     board = list(board4) + [river]
 
     hero_score = evaluator.evaluate(board, list(hero_hand))
-    opp_score = evaluator.evaluate(board, opp_hand)
+    opp_score  = evaluator.evaluate(board, opp_hand)
 
     if hero_score < opp_score:
         return 1.0
@@ -247,13 +114,20 @@ def simulate_turn_runout(hero_hand, board4):
         return 0.0
 
 
+
+
 # =========================================================
 # 4. HAND METRICS ON TURN
 # =========================================================
 
-def hand_metrics_on_turn(hero_hand, board4, samples):
+def hand_metrics_on_turn(hero_hand, board4, samples, deck_all, evaluator):
     results = np.array([
-        simulate_turn_runout(hero_hand, board4)
+        simulate_turn_runout(
+            hero_hand,
+            board4,
+            deck_all,
+            evaluator
+        )
         for _ in range(samples)
     ])
 
@@ -269,12 +143,17 @@ def hand_metrics_on_turn(hero_hand, board4, samples):
     }
 
 
+
 # =========================================================
 # 5. TURN BUCKET-LEVEL METRICS
 # =========================================================
 
 def simulate_turn_bucket_metrics(
     turns_in_bucket,
+    ordered_hand_classes,
+    class_to_hands,
+    deck_all,
+    evaluator,
     turns_per_bucket=20,
     river_samples=30,
     seed=42
@@ -298,10 +177,6 @@ def simulate_turn_bucket_metrics(
         min(len(turns_in_bucket), turns_per_bucket)
     )
 
-    # =====================================================
-    # MAIN LOOP WITH PROGRESS BAR (ETA)
-    # =====================================================
-
     for board4 in tqdm(
         sampled_turns,
         desc="SIMULATING TURNS",
@@ -320,7 +195,9 @@ def simulate_turn_bucket_metrics(
                     hand_metrics_on_turn(
                         hero_hand,
                         board4,
-                        river_samples
+                        river_samples,
+                        deck_all,
+                        evaluator
                     )
                 )
 
@@ -329,10 +206,6 @@ def simulate_turn_bucket_metrics(
                     bucket[hand_key][k].append(
                         np.mean([v[k] for v in vals])
                     )
-
-    # =====================================================
-    # FINAL AGGREGATION
-    # =====================================================
 
     final = {
         k: {kk: np.nanmean(vv) for kk, vv in v.items()}
@@ -365,32 +238,14 @@ def simulate_turn_bucket_metrics(
 
 
 # %%
-def save_turn_buckets_only(turns, labels, out_file="turn_buckets.pkl"):
-    """
-    Save only turn buckets (without any metrics).
-
-    buckets[bucket_id] = [(c1, c2, c3, c4), ...]
-    """
-    buckets = defaultdict(list)
-
-    for turn, label in zip(turns, labels):
-        buckets[label].append(turn)
-
-    buckets = dict(buckets)
-
-    with open(out_file, "wb") as f:
-        pickle.dump(buckets, f)
-
-    print(f"Saved {len(buckets)} turn buckets to {out_file}")
-    return buckets
-
-
-
-# %%
-def compute_and_save_all_turn_bucket_metrics(
+def compute_and_save_all_bucket_metrics(
     turns,
     labels,
     num_buckets,
+    ordered_hand_classes,
+    class_to_hands,
+    deck_all,
+    evaluator,
     turns_per_bucket=20,
     river_samples=30,
     out_file="bucket_turn_metrics.pkl",
@@ -411,6 +266,10 @@ def compute_and_save_all_turn_bucket_metrics(
 
         bucket_metrics, range_metrics = simulate_turn_bucket_metrics(
             turns_in_bucket,
+            ordered_hand_classes,
+            class_to_hands,
+            deck_all,
+            evaluator,
             turns_per_bucket=turns_per_bucket,
             river_samples=river_samples,
             seed=seed + bucket_id
@@ -431,47 +290,53 @@ def compute_and_save_all_turn_bucket_metrics(
 
 
 # %%
-if __name__ == "__main__":
+def save_turn_abstraction(kmeans, mean, std, path="turn_abstraction.pkl"):
+    with open(path, "wb") as f:
+        pickle.dump({
+            "kmeans": kmeans,
+            "mean": mean,
+            "std": std
+        }, f)
 
-    TURNS_PER_BUCKET = 100
-    RIVER_SAMPLES = 300
 
-    turn_vecs, turns = all_turn_vectors_solver()
-    
-    K = 25 
-    
-    turn_vecs_norm = (
-        turn_vecs - turn_vecs.mean(axis=0)
-    ) / turn_vecs.std(axis=0)
-    
-    kmeans_turn = KMeans(
-        n_clusters=K,
-        n_init="auto",
-        random_state=0
-    ).fit(turn_vecs_norm)
-    
-    turn_labels = kmeans_turn.labels_
-
+# %%
+def main():
+    DATA_PATH = Path.cwd().parents[1] / "data"
     RANK_CHARS = "23456789TJQKA"
 
-    class_to_hands, ordered_hand_classes = build_hand_classes()
-    
+    TURNS_PER_BUCKET = 60
+    RIVER_SAMPLES = 150
+    K = 35
+
+    vecs, turns = all_turn_feature_extractors()
+
+    mean = vecs.mean(axis=0)
+    std  = vecs.std(axis=0)
+    std  = np.where(std == 0, 1.0, std)
+
+    vecs_norm = (vecs - mean) / std
+    kmeans = KMeans(n_clusters=K, n_init="auto").fit(vecs_norm)
+    labels = kmeans.labels_
+
+    class_to_hands, ordered_hand_classes = build_hand_classes(RANK_CHARS)
     evaluator = Evaluator()
-    DECK_ALL = [Card.new(r + s) for r in RANK_CHARS for s in "shdc"]
+    deck_all = [Card.new(r+s) for r in RANK_CHARS for s in "shdc"]
 
-    turn_buckets = save_turn_buckets_only(
-        turns=turns,
-        labels=turn_labels,
-        out_file="turn_buckets.pkl"
+    save_turn_abstraction(kmeans, mean, std, path=DATA_PATH /"turn_abstraction.pkl")
+    
+    compute_and_save_all_bucket_metrics(
+        turns,
+        labels,
+        K,
+        ordered_hand_classes,
+        class_to_hands,
+        deck_all,
+        evaluator,
+        TURNS_PER_BUCKET,
+        RIVER_SAMPLES,
+        DATA_PATH / "turn_bucket_metrics.pkl"
     )
 
-    num_buckets = len(set(turn_labels))
 
-    turn_bucket_metrics = compute_and_save_all_turn_bucket_metrics(
-        turns=turns,
-        labels=turn_labels,
-        num_buckets=num_buckets,
-        turns_per_bucket=TURNS_PER_BUCKET,
-        river_samples=RIVER_SAMPLES,
-        out_file="turn_bucket_metrics_v2.pkl"
-    )
+if __name__ == "__main__":
+    main()
