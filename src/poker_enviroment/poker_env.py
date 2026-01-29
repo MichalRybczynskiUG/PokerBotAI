@@ -1,15 +1,16 @@
 import random
 import itertools
-from constants import *
 from Player import *
 from poker_engine import *
+from constants import *
+from observation import encode_observation
+
 
 def create_deck() -> list[str]:
     return [r + s for r, s in itertools.product(RANKS, SUITS)]
 
 def deal_card(deck) -> None:
     return deck.pop()
-
 
 def build_pots(players) -> list:
 
@@ -44,6 +45,7 @@ def build_pots(players) -> list:
 
 class PokerEnv:
     def __init__(self, stack_size=1000):
+        self._initial_stack = stack_size
         self.p1 = Player("P1", stack_size)
         self.p2 = Player("P2", stack_size)
         self.players = [self.p1, self.p2]
@@ -56,6 +58,10 @@ class PokerEnv:
 
         self.current_player = None
         self.last_stacks = None
+
+    @property
+    def initial_stack(self):
+        return self._initial_stack
 
     def reset(self):
         # reset graczy
@@ -184,17 +190,6 @@ class PokerEnv:
         self.done = True
 
     def _get_observation(self, player):
-        opp = self.p1 if player is self.p2 else self.p2
-
-        return {
-            "hand": player.hand,
-            "board": self.board.copy(),
-            "stack_self": player.stack,
-            "stack_opp": opp.stack,
-            "pot": self.engine.pot,
-            "to_call": self.engine.to_call,
-            "street": self.street,
-            "legal_actions": self.legal_actions()
-        }
+        return encode_observation(self, player)
 
 
