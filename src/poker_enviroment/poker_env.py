@@ -1,9 +1,9 @@
 import random
 import itertools
-from Player import *
-from poker_engine import *
-from constants import *
-from observation import encode_observation
+from src.poker_enviroment.Player import *
+from src.poker_enviroment.poker_engine import *
+from src.poker_enviroment.constants import *
+from src.poker_enviroment.observation import encode_observation
 
 
 def create_deck() -> list[str]:

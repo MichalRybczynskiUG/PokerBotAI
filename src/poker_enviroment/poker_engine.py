@@ -1,4 +1,4 @@
-from constants import *
+from src.poker_enviroment.constants import *
 
 def get_legal_actions(player, to_call) -> list[str]:
 
