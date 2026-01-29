@@ -29,3 +29,5 @@ STREET_NAMES = {
     3 : "RIVER",
     4 : "SHOWDOWN",
 }
+
+NUM_ACTIONS = 4
