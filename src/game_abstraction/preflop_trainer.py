@@ -163,7 +163,7 @@ def build_preflop_metrics_table(samples_per_pocket=5000):
     print("\nCzas budowy PREFLOP:", round(time.time() - start, 2), "s")
     return results
 
-def save_ehs_pickle(ehs, filename="preflop_ehs.pkl"):
+def save_ehs_pickle(ehs, filename="preflop_metrics.pkl"):
     with open(filename, "wb") as f:
         pickle.dump(ehs, f, protocol=pickle.HIGHEST_PROTOCOL)
     print("Saved in:", filename)
