@@ -1,5 +1,5 @@
-from ..poker_env import create_deck
-from ..observation import encode_cards
+from poker_enviroment.poker_env import create_deck
+from poker_enviroment.observation import encode_cards
 
 class TestCreateDeck:
     def test_create_deck_length(self):
