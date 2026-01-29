@@ -301,7 +301,7 @@ if __name__ == "__main__":
     RANKS = "23456789TJQKA"
     RANK_TO_INDEX = {r: i for i, r in enumerate(RANKS)}
 
-    gen_preflop_plots(filename = "preflop_ehs.pkl")
+    #gen_preflop_plots(filename = "preflop_ehs.pkl")
     gen_flop_plots(bucket_id = 0, filename = "flop_bucket_metrics.pkl")
-    gen_turn_plots(bucket_id = 0, filename = "turn_bucket_metrics.pkl")
+    #gen_turn_plots(bucket_id = 0, filename = "turn_bucket_metrics.pkl")
 
