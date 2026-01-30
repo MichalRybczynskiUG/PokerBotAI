@@ -84,6 +84,8 @@ class PokerEnv:
         sb, bb = self.players
         sb.stack -= SMALL_BLIND
         bb.stack -= BIG_BLIND
+        sb.position = 'SB'
+        bb.position = 'BB'
 
         sb.bet = sb.street_bet = SMALL_BLIND
         bb.bet = bb.street_bet = BIG_BLIND
