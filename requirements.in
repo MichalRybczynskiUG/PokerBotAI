@@ -10,3 +10,4 @@ dvc
 dvc-ssh
 seaborn
 plotly
+torch
