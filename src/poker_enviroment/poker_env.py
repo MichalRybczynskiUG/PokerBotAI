@@ -82,6 +82,9 @@ class PokerEnv:
 
         # blindy
         sb, bb = self.players
+
+        sb.position = "SB"
+        bb.position = "BB"
         sb.stack -= SMALL_BLIND
         bb.stack -= BIG_BLIND
 
@@ -104,18 +107,28 @@ class PokerEnv:
         if self.done:
             raise RuntimeError("Hand already finished")
 
-        prev_stack = self.current_player.stack
+        acting_player = self.current_player
+        prev_stack = acting_player.stack
+
 
         self.engine.step_betting(action, raise_amount)
-
-        # aktualizacja current_player
         self.current_player = self.engine.players[self.engine.current_player_idx]
 
-        # sprawdzamy koniec rundy
         if self.engine.betting_round_finished():
             self._advance_street()
+        reward = 0.0
 
-        reward = self.current_player.stack - prev_stack
+        if self.done:
+            p1_stack = self.p1.stack
+            p2_stack = self.p2.stack
+
+            if p1_stack > p2_stack:
+                reward = 1.0
+            elif p2_stack > p1_stack:
+                reward = -1.0
+            else:
+                reward = 0.0
+
         obs = self._get_observation(self.current_player)
 
         return obs, reward, self.done, {}
@@ -123,6 +136,9 @@ class PokerEnv:
     def _advance_street(self):
         for p in self.players:
             p.street_bet = 0
+
+        self.engine.to_call = 0
+        self.engine.actions_without_raise = 0
 
         if self.street == PREFLOP:
             self.board = [deal_card(self.deck) for _ in range(3)]
@@ -140,13 +156,9 @@ class PokerEnv:
             self._showdown()
             return
 
-        self.engine.actions_without_raise = 0
-        self.engine.to_call = 0
-
     def _showdown(self):
-        from PokerBotAI.src.poker_enviroment.hand_eval import evaluate_hand
+        from src.poker_enviroment.hand_eval import evaluate_hand
 
-        # ocena rąk TYLKO raz
         scores = {
             p: evaluate_hand(p.hand, self.board)
             for p in self.players
@@ -158,18 +170,14 @@ class PokerEnv:
         for pot in pots:
             amount = pot["amount"]
 
-            # tylko gracze:
-            # 1) którzy są eligible do tej puli
-            # 2) którzy nie spasowali
             eligible = [
                 p for p in pot["eligible"]
                 if not p.folded
             ]
 
             if not eligible:
-                continue  # teoretycznie nie powinno się zdarzyć
+                continue
 
-            # najlepsza ręka w tej puli
             best_score = max(scores[p] for p in eligible)
 
             winners = [
@@ -183,7 +191,6 @@ class PokerEnv:
             for w in winners:
                 w.stack += share
 
-            # reszta żetonów (odd chip) — standardowo pierwszy gracz
             if remainder > 0:
                 winners[0].stack += remainder
 

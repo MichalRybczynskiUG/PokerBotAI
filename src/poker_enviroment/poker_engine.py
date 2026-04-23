@@ -1,26 +1,28 @@
 from src.poker_enviroment.constants import *
 
-def get_legal_actions(player, to_call) -> list[str]:
+def get_legal_actions(player, to_call):
 
+    if player.all_in:
+        return [ACTION_CALL]
     actions = []
 
-    # Fold zawsze możliwy (jeśli jest bet)
+    # Fold
     if to_call > player.street_bet:
         actions.append(ACTION_FOLD)
 
-    # Call tylko jeśli jest co callować
+    # Call
     if to_call > player.street_bet and player.stack > 0:
         actions.append(ACTION_CALL)
 
-    # Check tylko jeśli nic nie trzeba dopłacać
+    # Check
     if to_call == player.street_bet:
-        actions.append(ACTION_CALL) #check
+        actions.append(ACTION_CALL)
 
-    # Raise tylko jeśli gracz ma środki
+    # Raise
     if player.stack > (to_call - player.street_bet):
         actions.append(ACTION_RAISE)
 
-    # All-in zawsze możliwy jeśli gracz ma stack
+    # All-in
     if player.stack > 0:
         actions.append(ACTION_ALL_IN)
 
@@ -66,17 +68,18 @@ class PokerEngine:
 
         # --- CALL / CHECK ---
         elif action == ACTION_CALL:
-            call_amount = max(0, self.to_call - p.street_bet)  # call_amount nie może być ujemne
-            call_amount = min(call_amount, p.stack)  # call_amount nie może być większe niż stack
+            call_amount = max(0, self.to_call - p.street_bet)
+            call_amount = min(call_amount, p.stack)
 
             p.stack -= call_amount
             p.bet += call_amount
             p.street_bet += call_amount
             self.pot += call_amount
-            self.actions_without_raise += 1
 
             if p.stack == 0:
                 p.all_in = True
+
+            self.actions_without_raise += 1
 
         # --- RAISE ---
         elif action == ACTION_RAISE:
@@ -84,24 +87,28 @@ class PokerEngine:
                 raise ValueError("Raise requires raise_amount")
 
             call_amount = max(0, self.to_call - p.street_bet)
-            total = call_amount + raise_amount
 
-            if total >= p.stack:
-                total = p.stack
-                p.all_in = True
+            max_raise = max(0, p.stack - call_amount)
+            raise_amount = max(0, raise_amount)
+            raise_amount = min(raise_amount, max_raise)
+
+            total = call_amount + raise_amount
 
             p.stack -= total
             p.bet += total
             p.street_bet += total
             self.pot += total
 
+            if p.stack == 0:
+                p.all_in = True
+
             self.to_call = p.street_bet
             self.actions_without_raise = 0
-            # po raisie nie sprawdzamy końca  rundy
 
         # --- ALL-IN ---
         elif action == ACTION_ALL_IN:
             amount = p.stack
+
             p.stack = 0
             p.bet += amount
             p.street_bet += amount
@@ -111,5 +118,10 @@ class PokerEngine:
             if p.street_bet > self.to_call:
                 self.to_call = p.street_bet
                 self.actions_without_raise = 0
+
+        active_players = [pl for pl in self.players if not pl.folded]
+
+        if all(pl.street_bet == self.to_call or pl.all_in for pl in active_players):
+            self.to_call = 0
 
         self.next_player()
