@@ -1,31 +1,39 @@
-from src.game_abstraction.betowanie_abstrakcja import (
-    CHECK, BET_MIN, BET_MAX, CALL, FOLD
+from src.poker_enviroment.constants import (
+    ACTION_FOLD,
+    ACTION_CALL,
+    ACTION_BET_25,
+    ACTION_BET_33,
+    ACTION_BET_50,
+    ACTION_BET_75,
+    ACTION_BET_100,
+    ACTION_ALL_IN,
 )
 
-ACTION_MAP = {
-    0: FOLD,
-    1: CALL,
-    2: BET_MIN,
-    3: BET_MAX,
-}
-
-def map_to_env(action_symbol, env):
-    player = env.current_player
+def map_to_env(action, env):
     pot = env.engine.pot
 
-    if action_symbol == FOLD:
-        return 0, None
+    if action == ACTION_FOLD:
+        return ACTION_FOLD, None
 
-    elif action_symbol == CALL:
-        return 1, None
+    elif action == ACTION_CALL:
+        return ACTION_CALL, None
 
-    elif action_symbol == BET_MIN:
-        raise_amount = max(10, int(pot * 0.33))
-        return 2, raise_amount
+    elif action == ACTION_BET_25:
+        return action, max(1, int(pot * 0.25))
 
-    elif action_symbol == BET_MAX:
-        raise_amount = max(10, int(pot))
-        return 2, raise_amount
+    elif action == ACTION_BET_33:
+        return action, max(1, int(pot * 0.33))
 
+    elif action == ACTION_BET_50:
+        return action, max(1, int(pot * 0.5))
+
+    elif action == ACTION_BET_75:
+        return action, max(1, int(pot * 0.75))
+
+    elif action == ACTION_BET_100:
+        return action, max(1, int(pot))
+
+    elif action == ACTION_ALL_IN:
+        return action, None
     else:
-        raise ValueError("Unknown action")
+        raise ValueError(f"Unknown action: {action}")

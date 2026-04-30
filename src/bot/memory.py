@@ -39,3 +39,26 @@ class ReplayBuffer:
     def __len__(self):
         """Return current size of the buffer."""
         return len(self.buffer)
+
+class ReservoirBuffer:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.buffer = []
+        self.n_seen = 0
+
+    def push(self, state, action):
+        self.n_seen += 1
+
+        if len(self.buffer) < self.capacity:
+            self.buffer.append((state, action))
+        else:
+            idx = random.randint(0, self.n_seen - 1)
+            if idx < self.capacity:
+                self.buffer[idx] = (state, action)
+
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, min(batch_size, len(self.buffer)))
+        return batch
+
+    def __len__(self):
+        return len(self.buffer)

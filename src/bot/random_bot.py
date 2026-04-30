@@ -1,4 +1,14 @@
 import random
+from src.poker_enviroment.constants import (
+    ACTION_FOLD,
+    ACTION_CALL,
+    ACTION_BET_25,
+    ACTION_BET_33,
+    ACTION_BET_50,
+    ACTION_BET_75,
+    ACTION_BET_100,
+    ACTION_ALL_IN,
+)
 
 class RandomBot:
     """Simple baseline agent that selects random legal actions.
@@ -7,27 +17,34 @@ class RandomBot:
     """
 
     def select_action(self, env):
-        """Select a random legal action.
-
-        Args:
-            env: Environment providing legal actions and game state.
-
-        Returns:
-            tuple:
-                int: Chosen action.
-                int or None: Raise amount if action is a raise, otherwise None.
-        """
         legal = env.legal_actions()
         action = random.choice(legal)
 
-        if action == 2:
-            min_raise = max(2, env.engine.to_call)
-            max_raise = env.current_player.stack
+        pot = env.engine.pot
 
-            if min_raise >= max_raise:
-                return action, min_raise
+        # FOLD / CALL
+        if action in [ACTION_FOLD, ACTION_CALL]:
+            return action, None
 
-            amount = random.randint(min_raise, max_raise)
-            return action, amount
+        # BETY
+        elif action == ACTION_BET_25:
+            return action, max(1, int(pot * 0.25))
 
-        return action, None
+        elif action == ACTION_BET_33:
+            return action, max(1, int(pot * 0.33))
+
+        elif action == ACTION_BET_50:
+            return action, max(1, int(pot * 0.5))
+
+        elif action == ACTION_BET_75:
+            return action, max(1, int(pot * 0.75))
+
+        elif action == ACTION_BET_100:
+            return action, max(1, int(pot))
+
+        # ALL-IN
+        elif action == ACTION_ALL_IN:
+            return action, None
+
+        # fallback (nie powinno się zdarzyć)
+        return ACTION_CALL, None
