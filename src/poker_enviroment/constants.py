@@ -1,4 +1,4 @@
-SUITS = ["♠", "♥", "♦", "♣"]
+SUITS = ["s", "h", "d", "c"]
 RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"]
 SMALL_BLIND = 5
 BIG_BLIND = 10
@@ -6,8 +6,14 @@ MIN_RAISE = BIG_BLIND
 
 ACTION_FOLD = 0
 ACTION_CALL = 1
-ACTION_RAISE = 2
-ACTION_ALL_IN = 3
+ACTION_BET_25 = 2
+ACTION_BET_33 = 3
+ACTION_BET_50 = 4
+ACTION_BET_75 = 5
+ACTION_BET_100 = 6
+ACTION_ALL_IN = 7
+
+NUM_ACTIONS = 8
 
 ACTION_NAMES = {
     0: "fold",
@@ -29,5 +35,3 @@ STREET_NAMES = {
     3 : "RIVER",
     4 : "SHOWDOWN",
 }
-
-NUM_ACTIONS = 4

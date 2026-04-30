@@ -1,21 +1,12 @@
 from pathlib import Path
 import pickle
 import numpy as np
+import torch
+
 from src.poker_enviroment.constants import NUM_ACTIONS, RANKS, SUITS
 from treys import Card
 from src.game_abstraction.board_features import extract_flop_board_features
 from src.game_abstraction.board_features import extract_turn_board_features
-SUIT_MAP = {
-    "♠": "s",
-    "♥": "h",
-    "♦": "d",
-    "♣": "c"
-}
-
-def to_treys(card_str):
-    rank = card_str[0]
-    suit = SUIT_MAP[card_str[1]]
-    return rank + suit
 
 
 def get_flop_bucket(board, abstraction):
@@ -23,64 +14,20 @@ def get_flop_bucket(board, abstraction):
     mean = abstraction["mean"]
     std = abstraction["std"]
 
-    c1, c2, c3 = [Card.new(to_treys(c)) for c in board]
+    c1, c2, c3 = [Card.new(c) for c in board]
 
     vec = extract_flop_board_features(c1, c2, c3)
     vec = (vec - mean) / std
 
     return kmeans.predict([vec])[0]
 
-def hand_to_ids(card1, card2) -> str:
-    if card1[0] == card2[0]:
-        return str(card1[0]) + str(card2[0])
-    else:
-        r1 = card1[0] if max(RANKS.index(card1[0]), RANKS.index(card2[0])) == RANKS.index(card1[0]) else card2[0]
-        r2 = card1[0] if r1 == card2[0] else card2[0]
-
-        if card1[1] == card2[1]:
-            return r1 + r2 + 's'
-        else: #card1[1] != card2[1]
-            return r1 + r2 + 'o'
-
-def preflop_loader(preflop_file):
-    with open(preflop_file, "rb") as f:
-        file = pickle.load(f)
-    return file
-
-def preflop_metrics(card1, card2, path):
-    hand_id = hand_to_ids(card1, card2)
-    data = preflop_loader(path)
-    return np.array(list(data[hand_id].values()))
-
-def bucket_loader(path):
-    with open(path, "rb") as f:
-        return pickle.load(f)
-
-def flop_metrics(hand, board, path):
-    abstraction = bucket_loader(path / "flop_abstraction.pkl")
-    metrics = bucket_loader(path / "flop_bucket_metrics.pkl")
-
-    bucket_id = get_flop_bucket(board, abstraction)
-
-    bucket_data = metrics[bucket_id]
-
-    vec = np.array([
-        bucket_data["range_metrics"]["RangeAdv"],
-        bucket_data["range_metrics"]["NutAdv"],
-        bucket_data["range_metrics"]["EPI"],
-        bucket_data["range_metrics"]["ECI"],
-        bucket_data["range_metrics"]["ShowdownDensity"],
-        bucket_data["range_metrics"]["LockIn"],
-    ], dtype=np.float32)
-
-    return vec
 
 def get_turn_bucket(board, abstraction):
     kmeans = abstraction["kmeans"]
     mean = abstraction["mean"]
     std = abstraction["std"]
 
-    cards = [Card.new(to_treys(c)) for c in board[:4]]
+    cards = [Card.new(c) for c in board[:4]]
     c1, c2, c3, c4 = cards
 
     vec = extract_turn_board_features(c1, c2, c3, c4)
@@ -88,15 +35,43 @@ def get_turn_bucket(board, abstraction):
 
     return kmeans.predict([vec])[0]
 
-def turn_metrics(hand, board, path):
-    abstraction = bucket_loader(path / "turn_abstraction.pkl")
-    metrics = bucket_loader(path / "turn_bucket_metrics.pkl")
+def hand_to_ids(card1, card2) -> str:
+    r1, r2 = card1[0], card2[0]
 
-    bucket_id = get_turn_bucket(board, abstraction)
+    if RANKS.index(r1) < RANKS.index(r2):
+        r1, r2 = r2, r1
 
+    if r1 == r2:
+        return r1 + r2
+
+    if card1[1] == card2[1]:
+        return r1 + r2 + 's'
+    else:
+        return r1 + r2 + 'o'
+
+def preflop_loader(preflop_file):
+    with open(preflop_file, "rb") as f:
+        return pickle.load(f)
+
+
+def preflop_metrics(card1, card2, path):
+    hand_id = hand_to_ids(card1, card2)
+    data = preflop_loader(path)
+    return np.array(list(data[hand_id].values()), dtype=np.float32)
+
+def bucket_loader(path):
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
+def flop_metrics(hand, board, path):
+    abstraction = bucket_loader(path / "flop_abstraction.pkl")
+    metrics = bucket_loader(path / "flop_bucket_metrics.pkl")
+
+    bucket_id = get_flop_bucket(board, abstraction)
     bucket_data = metrics[bucket_id]
 
-    vec = np.array([
+    return np.array([
         bucket_data["range_metrics"]["RangeAdv"],
         bucket_data["range_metrics"]["NutAdv"],
         bucket_data["range_metrics"]["EPI"],
@@ -105,24 +80,32 @@ def turn_metrics(hand, board, path):
         bucket_data["range_metrics"]["LockIn"],
     ], dtype=np.float32)
 
-    return vec
 
-def encode_board(board: list[str]) -> np.ndarray:
-    pass
-    '''padded = board + ["??"] * (5 - len(board))
-    vec = np.zeros(52, dtype=np.float32)
-    for c in padded:
-        if c != "??":
-            vec[card_to_index(c)] = 1.0
-    return vec'''
+def turn_metrics(hand, board, path):
+    abstraction = bucket_loader(path / "turn_abstraction.pkl")
+    metrics = bucket_loader(path / "turn_bucket_metrics.pkl")
 
-def encode_street(street: int) -> np.ndarray:
+    bucket_id = get_turn_bucket(board, abstraction)
+    bucket_data = metrics[bucket_id]
+
+    return np.array([
+        bucket_data["range_metrics"]["RangeAdv"],
+        bucket_data["range_metrics"]["NutAdv"],
+        bucket_data["range_metrics"]["EPI"],
+        bucket_data["range_metrics"]["ECI"],
+        bucket_data["range_metrics"]["ShowdownDensity"],
+        bucket_data["range_metrics"]["LockIn"],
+    ], dtype=np.float32)
+
+def encode_street(street: int):
     vec = np.zeros(4, dtype=np.float32)
     vec[street] = 1.0
     return vec
 
+
 def norm(x, max_stack):
     return np.array([x / max_stack], dtype=np.float32)
+
 
 def legal_action_mask(legal_actions):
     mask = np.zeros(NUM_ACTIONS, dtype=np.float32)
@@ -130,45 +113,86 @@ def legal_action_mask(legal_actions):
         mask[a] = 1.0
     return mask
 
-import numpy as np
-
 def encode_observation(self, player):
     opp = self.p1 if player is self.p2 else self.p2
     max_stack = self.initial_stack * 2
 
-    DATA_PATH = Path.cwd().parents[1] / "data"
-
-    # PREFLOP
     if self.street == 0:
-        features = preflop_metrics(
-            player.hand[0],
-            player.hand[1],
-            DATA_PATH / 'preflop_metrics.pkl'
-        )
+        hand_id = hand_to_ids(player.hand[0], player.hand[1])
+        data = self.preflop_data[hand_id]
 
-    # FLOP
+
+        features = np.array([
+            data["EHS"],
+            #data["VAR"],
+            #data["MED"],
+            #data["IQR"],
+            data["NEG_POT"],
+            #data["POS_POT"],
+
+            #0.0,  # RangeAdv
+            #0.0,  # NutAdv
+            #0.0,  # EPI
+            #0.0,  # ECI
+            #0.0,  # ShowdownDensity
+            #0.0,  # LockIn
+        ], dtype=np.float32)
+
     elif self.street == 1:
-        features = flop_metrics(
-            player.hand,
-            self.board,
-            DATA_PATH
-        )
+        bucket_id = get_flop_bucket(self.board, self.flop_abstraction)
+        bucket_data = self.flop_metrics[bucket_id]
 
-    # TURN
-    elif self.street == 2:
-        features = turn_metrics(
-            player.hand,
-            self.board,
-            DATA_PATH
-        )
+        hand_key = hand_to_ids(player.hand[0], player.hand[1])
+        hand_data = bucket_data["hand_metrics"][hand_key]
 
-    # RIVER
+        features = np.array([
+            hand_data["EHS"],
+            #hand_data["VAR"],
+            #hand_data["MED"],
+            #hand_data["IQR"],
+            hand_data["NEG_POT"],
+           #hand_data["POS_POT"],
+
+            #bucket_data["range_metrics"]["RangeAdv"],
+            #bucket_data["range_metrics"]["NutAdv"],
+            #bucket_data["range_metrics"]["EPI"],
+            #bucket_data["range_metrics"]["ECI"],
+            #bucket_data["range_metrics"]["ShowdownDensity"],
+            #bucket_data["range_metrics"]["LockIn"],
+        ], dtype=np.float32)
+
     else:
-        features = turn_metrics(
-            player.hand,
-            self.board,
-            DATA_PATH
-        )
+        bucket_id = get_turn_bucket(self.board, self.turn_abstraction)
+        bucket_data = self.turn_metrics[bucket_id]
+
+        hand_key = hand_to_ids(player.hand[0], player.hand[1])
+        hand_data = bucket_data["hand_metrics"][hand_key]
+
+        if hand_data is None:
+            hand_data = {
+                "EHS": 0.5,
+                "VAR": 0.0,
+                "MED": 0.5,
+                "IQR": 0.0,
+                "NEG_POT": 0.5,
+                "POS_POT": 0.5,
+            }
+
+        features = np.array([
+            hand_data["EHS"],
+            #hand_data["VAR"],
+            #hand_data["MED"],
+            #hand_data["IQR"],
+            hand_data["NEG_POT"],
+            #hand_data["POS_POT"],
+
+            #bucket_data["range_metrics"]["RangeAdv"],
+            #bucket_data["range_metrics"]["NutAdv"],
+            #bucket_data["range_metrics"]["EPI"],
+            #bucket_data["range_metrics"]["ECI"],
+            #bucket_data["range_metrics"]["ShowdownDensity"],
+            #bucket_data["range_metrics"]["LockIn"],
+        ], dtype=np.float32)
 
     obs = np.concatenate([
         features,
@@ -188,4 +212,4 @@ def encode_observation(self, player):
         legal_action_mask(self.legal_actions())
     ])
 
-    return obs
+    return torch.tensor(obs, dtype=torch.float32)

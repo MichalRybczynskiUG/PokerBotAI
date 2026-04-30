@@ -4,25 +4,26 @@ def get_legal_actions(player, to_call):
 
     if player.all_in:
         return [ACTION_CALL]
+
     actions = []
 
-    # Fold
-    if to_call > player.street_bet:
+    call_amount = max(0, to_call - player.street_bet)
+
+    if call_amount > 0:
         actions.append(ACTION_FOLD)
 
-    # Call
-    if to_call > player.street_bet and player.stack > 0:
+    if player.stack > 0:
         actions.append(ACTION_CALL)
 
-    # Check
-    if to_call == player.street_bet:
-        actions.append(ACTION_CALL)
+    if player.stack > call_amount:
+        actions.extend([
+            ACTION_BET_25,
+            ACTION_BET_33,
+            ACTION_BET_50,
+            ACTION_BET_75,
+            ACTION_BET_100,
+        ])
 
-    # Raise
-    if player.stack > (to_call - player.street_bet):
-        actions.append(ACTION_RAISE)
-
-    # All-in
     if player.stack > 0:
         actions.append(ACTION_ALL_IN)
 
@@ -60,13 +61,11 @@ class PokerEngine:
 
         legal = get_legal_actions(p, self.to_call)
         if action not in legal:
-            raise ValueError("Illegal action")
+            raise ValueError(f"Illegal action: {action}, legal: {legal}")
 
-        # --- FOLD ---
         if action == ACTION_FOLD:
             p.folded = True
 
-        # --- CALL / CHECK ---
         elif action == ACTION_CALL:
             call_amount = max(0, self.to_call - p.street_bet)
             call_amount = min(call_amount, p.stack)
@@ -81,14 +80,20 @@ class PokerEngine:
 
             self.actions_without_raise += 1
 
-        # --- RAISE ---
-        elif action == ACTION_RAISE:
+        elif action in [
+            ACTION_BET_25,
+            ACTION_BET_33,
+            ACTION_BET_50,
+            ACTION_BET_75,
+            ACTION_BET_100,
+        ]:
             if raise_amount is None:
-                raise ValueError("Raise requires raise_amount")
+                raise ValueError("Bet requires raise_amount")
 
             call_amount = max(0, self.to_call - p.street_bet)
 
             max_raise = max(0, p.stack - call_amount)
+
             raise_amount = max(0, raise_amount)
             raise_amount = min(raise_amount, max_raise)
 
@@ -105,7 +110,6 @@ class PokerEngine:
             self.to_call = p.street_bet
             self.actions_without_raise = 0
 
-        # --- ALL-IN ---
         elif action == ACTION_ALL_IN:
             amount = p.stack
 

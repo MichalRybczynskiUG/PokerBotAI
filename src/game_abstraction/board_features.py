@@ -3,8 +3,6 @@
 
 # In[2]:
 
-
-from treys import Card, Evaluator
 import numpy as np
 
 
@@ -14,34 +12,14 @@ import numpy as np
 # FEATURE VECTOR FOR A FLOP
 
 def extract_flop_board_features(card1, card2, card3):
-
-    """
-    Extracts a numerical feature vector describing flop board texture.
-
-    The features capture rank structure, pairing, connectivity, straight and
-    flush potential, broadway presence, board dynamics, and proxy measures
-    for nut density. The output is intended for use in statistical analysis
-    or machine learning models (e.g. equity or strategy modeling).
-
-    Parameters
-    ----------
-    card1, card2, card3 : Card
-        Flop cards.
-
-    Returns
-    -------
-    np.ndarray
-        1D array of float features representing the flop board texture.
-    """
-
     cards = [card1, card2, card3]
 
     # --- ranks and suits ---
     ranks = sorted(
-        (Card.get_rank_int(c) for c in cards),
+        (c.rank for c in cards),
         reverse=True
     )
-    suits = [Card.get_suit_int(c) for c in cards]
+    suits = [c.suit for c in cards]
 
     high, mid, low = ranks
 
@@ -64,12 +42,6 @@ def extract_flop_board_features(card1, card2, card3):
     gap_mid_low = mid - low
     max_gap = max(gap_high_mid, gap_mid_low)
 
-    # connectivity (0–3)
-    # 3 = very connected (np. JT9)
-    # 2 = semi-connected (np. QJ8)
-    # 1 = loose (np. KJ4)
-    # 0 = no connected
-
     connectivity_quality = (
         3 if max_gap == 1 else
         2 if max_gap == 2 else
@@ -87,7 +59,6 @@ def extract_flop_board_features(card1, card2, card3):
         gap_high_mid == 1 and gap_mid_low == 1 and high >= 9
     )
 
-    # wheel A2345
     wheel_possible = int(
         has_ace and mid <= 3
     )
@@ -126,36 +97,23 @@ def extract_flop_board_features(card1, card2, card3):
     )
 
     return np.array([
-        # rank structure
         high,
         mid,
         low,
         average_rank,
         broadway_count,
         has_ace,
-
-        # pairing
         paired_board_strength,
-
-        # connectivity
         gap_high_mid,
         gap_mid_low,
         connectivity_quality,
-
-        # straights
         straight_draw_potential,
         nut_straight_possible,
         wheel_possible,
-
-        # flushes
         flush_draw_potential,
         ace_suited_on_board,
         nut_flush_possible,
-
-        # broadway texture
         broadway_connectivity,
-
-        # dynamics / nuts
         is_dynamic,
         nut_density,
     ], dtype=float)

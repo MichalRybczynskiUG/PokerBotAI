@@ -4,6 +4,8 @@ from src.poker_enviroment.Player import *
 from src.poker_enviroment.poker_engine import *
 from src.poker_enviroment.constants import *
 from src.poker_enviroment.observation import encode_observation
+from src.poker_enviroment.observation import bucket_loader, preflop_loader
+from pathlib import Path
 
 
 def create_deck() -> list[str]:
@@ -58,6 +60,16 @@ class PokerEnv:
 
         self.current_player = None
         self.last_stacks = None
+
+        DATA_PATH = Path.cwd().parents[1] / "data"
+
+        self.preflop_data = preflop_loader(DATA_PATH / "preflop_metrics.pkl")
+
+        self.flop_abstraction = bucket_loader(DATA_PATH / "flop_abstraction.pkl")
+        self.flop_metrics = bucket_loader(DATA_PATH / "flop_bucket_metrics.pkl")
+
+        self.turn_abstraction = bucket_loader(DATA_PATH / "turn_abstraction.pkl")
+        self.turn_metrics = bucket_loader(DATA_PATH / "turn_bucket_metrics.pkl")
 
     @property
     def initial_stack(self):
@@ -122,12 +134,7 @@ class PokerEnv:
             p1_stack = self.p1.stack
             p2_stack = self.p2.stack
 
-            if p1_stack > p2_stack:
-                reward = 1.0
-            elif p2_stack > p1_stack:
-                reward = -1.0
-            else:
-                reward = 0.0
+            reward = (p1_stack - p2_stack) / self.initial_stack
 
         obs = self._get_observation(self.current_player)
 
@@ -199,4 +206,17 @@ class PokerEnv:
     def _get_observation(self, player):
         return encode_observation(self, player)
 
+def get_debug_observation(self, player):
+    opp = self.p1 if player is self.p2 else self.p2
+
+    return {
+        "street": self.street,
+        "hand": player.hand,
+        "board": self.board,
+        "stack_self": player.stack,
+        "stack_opp": opp.stack,
+        "pot": self.engine.pot,
+        "to_call": self.engine.to_call,
+        "legal_actions": self.legal_actions()
+    }
 
