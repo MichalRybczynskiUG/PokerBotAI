@@ -6,7 +6,26 @@ from src.poker_enviroment.constants import *
 from src.poker_enviroment.observation import encode_observation
 from src.poker_enviroment.observation import bucket_loader, preflop_loader
 from pathlib import Path
+import numpy as np
 
+def map_action_to_bucket(action):
+    if action == ACTION_CALL:
+        return 0
+
+    elif action in [ACTION_BET_25, ACTION_BET_33]:
+        return 1
+
+    elif action == ACTION_BET_50:
+        return 2
+
+    elif action in [ACTION_BET_75, ACTION_BET_100]:
+        return 3
+
+    elif action == ACTION_ALL_IN:
+        return 4
+
+    else:
+        return None
 
 def create_deck() -> list[str]:
     return [r + s for r, s in itertools.product(RANKS, SUITS)]
@@ -14,35 +33,11 @@ def create_deck() -> list[str]:
 def deal_card(deck) -> None:
     return deck.pop()
 
-def build_pots(players) -> list:
-
-    pots = []
-
-    # gracze, którzy włożyli cokolwiek
-    active = [p for p in players if p.bet > 0]
-
-    # sortujemy po wysokości betu
-    active.sort(key=lambda p: p.bet)
-
-    prev = 0
-    while active:
-        # najmniejszy bet wśród pozostałych
-        level = active[0].bet
-
-        # pula, o którą grają gracze na tym samym level
-        amount = (level - prev) * len(active)
-
-        pots.append({
-            "amount": amount,
-            "eligible": active.copy()
-        })
-
-        prev = level
-
-        # usuwamy graczy, którzy „skończyli” na tym poziomie
-        active = [p for p in active if p.bet > level]
-
-    return pots
+def build_pots(players, pot):
+    return [{
+        "amount": pot,
+        "eligible": [p for p in players if not p.folded]
+    }]
 
 
 class PokerEnv:
@@ -61,6 +56,8 @@ class PokerEnv:
         self.current_player = None
         self.last_stacks = None
 
+        self.action_history = np.zeros((2, 4, 5, 5), dtype=np.float32)
+
         DATA_PATH = Path.cwd().parents[1] / "data"
 
         self.preflop_data = preflop_loader(DATA_PATH / "preflop_metrics.pkl")
@@ -76,13 +73,17 @@ class PokerEnv:
         return self._initial_stack
 
     def reset(self):
-        # reset graczy
+
         for p in self.players:
             p.reset()
+        self.initial_stack_p1 = self.p1.stack
+        self.initial_stack_p2 = self.p2.stack
 
         self.board = []
         self.street = PREFLOP
         self.done = False
+
+        self.action_history.fill(0)
 
         # deck
         self.deck = create_deck()
@@ -92,11 +93,18 @@ class PokerEnv:
         for p in self.players:
             p.hand = [deal_card(self.deck), deal_card(self.deck)]
 
+        self.initial_stack_p1 = self.p1.stack
+        self.initial_stack_p2 = self.p2.stack
+
         # blindy
-        sb, bb = self.players
+        if random.random() < 0.5:
+            sb, bb = self.players
+        else:
+            bb, sb = self.players
 
         sb.position = "SB"
         bb.position = "BB"
+
         sb.stack -= SMALL_BLIND
         bb.stack -= BIG_BLIND
 
@@ -108,7 +116,6 @@ class PokerEnv:
         self.engine.to_call = BIG_BLIND
 
         self.current_player = sb
-        self.last_stacks = {p: p.stack for p in self.players}
 
         return self._get_observation(self.current_player)
 
@@ -120,21 +127,66 @@ class PokerEnv:
             raise RuntimeError("Hand already finished")
 
         acting_player = self.current_player
-        prev_stack = acting_player.stack
 
+        player_idx = 0 if acting_player == self.p1 else 1
+        street = self.street
+
+        slot = int(np.sum(self.action_history[player_idx, street].sum(axis=-1) > 0))
+        bucket = map_action_to_bucket(action)
+
+        if bucket is not None and slot < 5:
+            self.action_history[player_idx, street, slot, bucket] = 1.0
 
         self.engine.step_betting(action, raise_amount)
+
+        active = [p for p in self.engine.players if not p.folded]
+
+        if len(active) == 1:
+            winner = active[0]
+
+            self.done = True
+
+            winner.stack += self.engine.pot
+            self.engine.pot = 0
+
+            if acting_player == self.p1:
+                reward = (
+                                 self.p1.stack - self.initial_stack_p1
+                         ) / BIG_BLIND
+            else:
+                reward = (
+                                 self.p2.stack - self.initial_stack_p2
+                         ) / BIG_BLIND
+
+            obs = self._get_observation(winner)
+
+            return obs, reward, True, {}
+
         self.current_player = self.engine.players[self.engine.current_player_idx]
+
+        active = [p for p in self.engine.players if not p.folded]
+
+        if all(p.all_in for p in active):
+            while self.street != RIVER:
+                self._advance_street()
+
+            self._advance_street()
 
         if self.engine.betting_round_finished():
             self._advance_street()
+
         reward = 0.0
 
         if self.done:
-            p1_stack = self.p1.stack
-            p2_stack = self.p2.stack
 
-            reward = (p1_stack - p2_stack) / self.initial_stack
+            if acting_player == self.p1:
+                reward = (
+                                 self.p1.stack - self.initial_stack_p1
+                         ) / BIG_BLIND
+            else:
+                reward = (
+                                 self.p2.stack - self.initial_stack_p2
+                         ) / BIG_BLIND
 
         obs = self._get_observation(self.current_player)
 
@@ -172,7 +224,7 @@ class PokerEnv:
             if not p.folded
         }
 
-        pots = build_pots(self.players)
+        pots = build_pots(self.players, self.engine.pot)
 
         for pot in pots:
             amount = pot["amount"]
@@ -185,7 +237,7 @@ class PokerEnv:
             if not eligible:
                 continue
 
-            best_score = max(scores[p] for p in eligible)
+            best_score = min(scores[p] for p in eligible)
 
             winners = [
                 p for p in eligible
@@ -201,10 +253,23 @@ class PokerEnv:
             if remainder > 0:
                 winners[0].stack += remainder
 
+        self.engine.pot = 0
+
+        for p in self.players:
+            p.bet = 0
+            p.street_bet = 0
+
         self.done = True
 
     def _get_observation(self, player):
         return encode_observation(self, player)
+
+    def hand_strength(self, player):
+        from src.poker_enviroment.hand_eval import evaluate_hand
+
+        score = evaluate_hand(player.hand, self.board)
+
+        return 1.0 / (1.0 + score)
 
 def get_debug_observation(self, player):
     opp = self.p1 if player is self.p2 else self.p2
@@ -219,4 +284,3 @@ def get_debug_observation(self, player):
         "to_call": self.engine.to_call,
         "legal_actions": self.legal_actions()
     }
-
