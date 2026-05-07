@@ -18,8 +18,12 @@ NUM_ACTIONS = 8
 ACTION_NAMES = {
     0: "fold",
     1: "call/check",
-    2: "raise",
-    3: "all-in"
+    2: "bet_25",
+    3: "bet_33",
+    4: "bet_50",
+    5: "bet_75",
+    6: "bet_100",
+    7: "all-in"
 }
 
 PREFLOP = 0
