@@ -3,7 +3,7 @@ from src.poker_enviroment.constants import *
 def get_legal_actions(player, to_call):
 
     if player.all_in:
-        return [ACTION_CALL]
+        return []
 
     actions = []
 
@@ -28,7 +28,6 @@ def get_legal_actions(player, to_call):
         actions.append(ACTION_ALL_IN)
 
     return actions
-
 
 class PokerEngine:
     def __init__(self, players):
@@ -91,7 +90,6 @@ class PokerEngine:
                 raise ValueError("Bet requires raise_amount")
 
             call_amount = max(0, self.to_call - p.street_bet)
-
             max_raise = max(0, p.stack - call_amount)
 
             raise_amount = max(0, raise_amount)
@@ -121,7 +119,8 @@ class PokerEngine:
 
             if p.street_bet > self.to_call:
                 self.to_call = p.street_bet
-                self.actions_without_raise = 0
+
+            self.actions_without_raise = 0
 
         active_players = [pl for pl in self.players if not pl.folded]
 
