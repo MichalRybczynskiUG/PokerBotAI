@@ -1,5 +1,6 @@
 import random
 from collections import deque
+import pickle
 
 class ReplayBuffer:
     """Experience replay buffer for storing and sampling transitions.
@@ -34,7 +35,16 @@ class ReplayBuffer:
             list: Batch of transitions grouped by element (zipped).
         """
         batch = random.sample(self.buffer, batch_size)
+
         return list(zip(*batch))
+
+    def save(self, path):
+        with open(path, "wb") as f:
+            pickle.dump(self.buffer, f)
+
+    def load(self, path):
+        with open(path, "rb") as f:
+            self.buffer = pickle.load(f)
 
     def __len__(self):
         """Return current size of the buffer."""
@@ -46,15 +56,15 @@ class ReservoirBuffer:
         self.buffer = []
         self.n_seen = 0
 
-    def push(self, state, action):
+    def push(self, state, action, mask):
         self.n_seen += 1
 
         if len(self.buffer) < self.capacity:
-            self.buffer.append((state, action))
+            self.buffer.append((state, action, mask))
         else:
             idx = random.randint(0, self.n_seen - 1)
             if idx < self.capacity:
-                self.buffer[idx] = (state, action)
+                self.buffer[idx] = (state, action, mask)
 
     def sample(self, batch_size):
         batch = random.sample(self.buffer, min(batch_size, len(self.buffer)))
@@ -62,3 +72,11 @@ class ReservoirBuffer:
 
     def __len__(self):
         return len(self.buffer)
+
+    def save(self, path):
+        with open(path, "wb") as f:
+            pickle.dump(self.buffer, f)
+
+    def load(self, path):
+        with open(path, "rb") as f:
+            self.buffer = pickle.load(f)
