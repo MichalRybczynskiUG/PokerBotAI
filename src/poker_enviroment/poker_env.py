@@ -4,8 +4,6 @@ from src.poker_enviroment.Player import *
 from src.poker_enviroment.poker_engine import *
 from src.poker_enviroment.constants import *
 from src.poker_enviroment.observation import encode_observation
-from src.poker_enviroment.observation import bucket_loader, preflop_loader
-from pathlib import Path
 import numpy as np
 
 def map_action_to_bucket(action):
@@ -58,15 +56,6 @@ class PokerEnv:
 
         self.action_history = np.zeros((2, 4, 5, 5), dtype=np.float32)
 
-        DATA_PATH = Path.cwd().parents[1] / "data"
-
-        self.preflop_data = preflop_loader(DATA_PATH / "preflop_metrics.pkl")
-
-        self.flop_abstraction = bucket_loader(DATA_PATH / "flop_abstraction.pkl")
-        self.flop_metrics = bucket_loader(DATA_PATH / "flop_bucket_metrics.pkl")
-
-        self.turn_abstraction = bucket_loader(DATA_PATH / "turn_abstraction.pkl")
-        self.turn_metrics = bucket_loader(DATA_PATH / "turn_bucket_metrics.pkl")
 
     @property
     def initial_stack(self):
