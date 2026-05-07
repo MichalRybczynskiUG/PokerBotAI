@@ -181,8 +181,8 @@ def select_action_nfsp(model, state, legal_mask, eta=0.1, epsilon=0.05):
             int: Selected action index.
             str: Mode used ("BR" for best response, "AVG" for average policy).
     """
-    state = torch.FloatTensor(state).unsqueeze(0)
-    legal_mask = torch.FloatTensor(legal_mask)
+    state = state.unsqueeze(0)
+    legal_mask = legal_mask.to(state.device)
 
     with torch.no_grad():
         # POLICY π
@@ -196,16 +196,14 @@ def select_action_nfsp(model, state, legal_mask, eta=0.1, epsilon=0.05):
 
         greedy_action = torch.argmax(masked_q).item()
 
-        beta_probs = torch.zeros_like(pi_probs)
         legal_actions = torch.where(legal_mask == 1)[0]
 
         beta_probs = torch.zeros_like(pi_probs)
 
-        legal_actions = torch.where(legal_mask == 1)[0]
+        for a in legal_actions:
+            beta_probs[a] = epsilon / len(legal_actions)
 
-        beta_probs[legal_actions] = epsilon / len(legal_actions)
-
-        beta_probs[greedy_action] = (1 - epsilon) + (epsilon / len(legal_actions))
+        beta_probs[greedy_action] += (1 - epsilon)
 
     use_br = torch.rand(1).item() < eta
 
@@ -236,28 +234,37 @@ def compute_q_loss(model, batch, gamma=0.99):
     """
     states, actions, rewards, next_states, dones, next_legal_masks = batch
 
-    states = torch.stack(states)
-    actions = torch.LongTensor(actions)
-    rewards = torch.FloatTensor(rewards)
-    next_states = torch.stack(next_states)
-    dones = torch.FloatTensor(dones)
-    next_legal_masks = torch.stack(next_legal_masks)
+    device = next(model.parameters()).device
+
+    states = states.to(device)
+    actions = actions.to(device)
+    rewards = rewards.to(device)
+    next_states = next_states.to(device)
+    dones = dones.to(device)
+    next_legal_masks = next_legal_masks.to(device)
 
     q_values = model.q_net(states)
     q_value = q_values.gather(1, actions.unsqueeze(1)).squeeze()
 
     with torch.no_grad():
-        next_q_values = model.target_q_net(next_states)
+        next_q_main = model.q_net(next_states)
 
-        next_q_values = next_q_values.masked_fill(next_legal_masks == 0, -1e9)
+        next_q_main = next_q_main.masked_fill(next_legal_masks == 0, -1e9)
 
-        next_q = next_q_values.max(1)[0]
+        next_actions = next_q_main.argmax(dim=1)
+
+        next_q_target = model.target_q_net(next_states)
+
+        next_q = next_q_target.gather(
+            1, next_actions.unsqueeze(1)
+        ).squeeze(1)
+
         target = rewards + gamma * next_q * (1 - dones)
 
-    loss = F.mse_loss(q_value, target)
+    loss = F.smooth_l1_loss(q_value, target)
     return loss
 
-def compute_policy_loss(model, batch):
+def compute_policy_loss(model, batch, legal_masks):
     """Compute cross-entropy loss for the policy network.
 
     Trains the policy network to imitate actions (average strategy)
@@ -270,19 +277,22 @@ def compute_policy_loss(model, batch):
     Returns:
         Tensor: Scalar loss value for policy network training.
     """
-    states, actions = zip(*batch)
+    states, actions = batch
 
-    states = torch.stack([
-        s if isinstance(s, torch.Tensor) else torch.FloatTensor(s)
-        for s in states
-    ])
-    actions = torch.LongTensor(actions)
+    device = next(model.parameters()).device
+
+    states = states.to(device)
+    actions = actions.to(device)
+    legal_masks = legal_masks.to(device)
 
     logits = model.policy_net(states)
-    logits = torch.clamp(logits, -10, 10)
 
-    log_probs = F.log_softmax(logits, dim=-1)
-    loss = F.nll_loss(log_probs, actions)
+    masked_logits = logits + (legal_masks - 1) * 1e9
+
+    log_probs = torch.log_softmax(masked_logits, dim=-1)
+
+    loss = torch.nn.functional.nll_loss(log_probs, actions)
+
     return loss
 
 def build_optimizers(model, lr=1e-3):
