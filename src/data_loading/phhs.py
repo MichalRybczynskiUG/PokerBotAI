@@ -31,10 +31,10 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
                 if value_var.strip().strip("'") == variant:
                     is_variant = True
 
-            if line.startswith('antes'):
-                _, value_antes = line.split('=', 1)
-                value_antes = value_antes.split(',')
-                num_of_players_game = len(value_antes)
+            if line.startswith('starting_stacks'):
+                _, value_starting_stacks = line.split('=', 1)
+                value_starting_stacks = value_starting_stacks.split(',')
+                num_of_players_game = len(value_starting_stacks)
                 if num_of_players_game == num_of_players:
                     is_n_players = True
 
@@ -47,7 +47,7 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
 
     return num_games
 
-def load_phhs_file(file_dir) -> list:
+def load_phhs_file(file_dir) -> tuple[list,list]:
 
         def load_entire_string(index : int, lines : list[str], end_sign = ']'):
             """
@@ -73,6 +73,7 @@ def load_phhs_file(file_dir) -> list:
             return result
 
         games_list = []
+        actions_list = []
         game_dic = {}
 
         with open(file_dir, 'r', encoding = 'utf-8') as f:
@@ -89,17 +90,11 @@ def load_phhs_file(file_dir) -> list:
                 game_dic["variant"] = value
                 i += 1
 
-
-            elif line.startswith("antes"):
-                _ , value = line.split("=", 1)
-                value = string_to_list_floats(value)
-                game_dic["antes"] = value
-                i += 1
-
             elif line.startswith("blinds_or_straddles"):
                 _ , value = line.split("=", 1)
                 value = string_to_list_floats(value)
-                game_dic["blinds_or_straddles"] = value
+                game_dic["small_blind"] = value[0]
+                game_dic["big_blind"] = value[0]
                 i += 1
 
             elif line.startswith("starting_stacks"):
@@ -112,6 +107,7 @@ def load_phhs_file(file_dir) -> list:
                 _, value = line.split("=", 1)
                 value = float(value.strip())
                 game_dic["min_bet"] = value
+                i+= 1
 
             elif line.startswith("actions"):
 
@@ -119,14 +115,15 @@ def load_phhs_file(file_dir) -> list:
                 _ , value = line.split("=", 1)
                 value = re.findall(r'["\'](.*?)["\']', value)
 
-                actions_list = []
-                cards_players = {f"p{i+1}": "" for i in range(len(game_dic["antes"]))} #we save cards that each player has
+                actions_game = []
+                cards_players = {f"p{i+1}": "" for i in range(len(game_dic["starting_stacks"]))} #we save cards that each player has
                 community_cards = "" # cards on the table
 
-                for action in value:
+                for j, action in enumerate(value):
                     action_dic = {}
                     action = action.split()
 
+                    action_dic["action_id"] = j
                     action_dic["actor"] = action[0]
                     action_dic["action"] = action[1]
                     if action_dic["actor"] == "d": #dealer makes action
@@ -141,9 +138,9 @@ def load_phhs_file(file_dir) -> list:
                         if action_dic["action"] == "cbr":
                             action_dic["cbr_amount"] = action[2]
 
-                    actions_list.append(action_dic)
+                    actions_game.append(action_dic)
 
-                game_dic["actions"] = actions_list
+                actions_list.append(actions_game)
 
             elif line.startswith("[") and game_dic:
                 games_list.append(game_dic)
@@ -153,4 +150,4 @@ def load_phhs_file(file_dir) -> list:
             else:
                 i += 1
 
-        return games_list
+        return games_list, actions_list
