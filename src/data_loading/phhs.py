@@ -8,11 +8,12 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
     Parameters
     ----------
     file_path - path to the phhs file
+    variant - variant of the game
+    num_of_players - number of desired players
 
     Returns
     -------
-    number of Heads-up No Limit Texas Hold'em games in the file
-
+    number of desired games in the file
     """
     num_games = 0
 
@@ -31,14 +32,14 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
                 if value_var.strip().strip("'") == variant:
                     is_variant = True
 
-            if line.startswith('starting_stacks'):
+            elif line.startswith('starting_stacks'):
                 _, value_starting_stacks = line.split('=', 1)
                 value_starting_stacks = value_starting_stacks.split(',')
                 num_of_players_game = len(value_starting_stacks)
                 if num_of_players_game == num_of_players:
                     is_n_players = True
 
-            if line.startswith("["):
+            elif line.startswith("["):
                 if is_variant and is_n_players:
                     num_games += 1
 
@@ -51,7 +52,7 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
 
         def load_entire_string(index : int, lines : list[str], end_sign = ']'):
             """
-            Concatenates next lines if the list is spread across few lines.
+            Concatenates next lines if the list is stretched over few lines.
             """
             result = ""
             i = index
@@ -66,15 +67,36 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
             return result, i
 
         def string_to_list_floats(string_list: str) -> list[float]:
+            """Converts string to the list of floats"""
             result = string_list.strip().strip("[]")
             result = result.split(",")
             result = [float(x.strip()) for x in result]
 
             return result
 
-        games_list = []
-        actions_list = []
-        game_dic = {}
+        def cards_string_to_list(cards_string: str) -> list[str]:
+            """
+            Transfroms string of cards to the list of cards
+
+            Returns:
+            --------
+            List of strings where each represents single card
+            """
+            list_cards = []
+            card = ""
+
+            for i in range(len(cards_string)):
+                if (i % 2 == 0) & (i != 0):
+                    list_cards.append(card)
+                    card = ""
+                card += cards_string[i]
+
+            return list_cards
+
+
+        games_list = [] #list of all games
+        actions_list = [] #list of all actions in all games
+        game_dic = {} #dictionary representing single game
 
         with open(file_dir, 'r', encoding = 'utf-8') as f:
             lines = [line.strip() for line in f]
@@ -111,11 +133,11 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
 
             elif line.startswith("actions"):
 
-                line, i = load_entire_string(i, lines) #concatenating actions spread across different lines
+                line, i = load_entire_string(i, lines) #concatenating actions stretched over different lines
                 _ , value = line.split("=", 1)
                 value = re.findall(r'["\'](.*?)["\']', value)
 
-                actions_game = []
+                actions_game = [] #listo of actions in single game
                 cards_players = {f"p{i+1}": "" for i in range(len(game_dic["starting_stacks"]))} #we save cards that each player has
                 community_cards = "" # cards on the table
 
