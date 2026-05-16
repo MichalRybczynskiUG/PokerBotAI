@@ -78,19 +78,22 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
             """
             Transfroms string of cards to the list of cards
 
+            Input:
+            --------
+            cards_string - string of cards like "Kd2d2c8s9c"
+
             Returns:
             --------
             List of strings where each represents single card
             """
             list_cards = []
-            card = ""
 
+            card = ""
             for i in range(len(cards_string)):
-                if (i % 2 == 0) & (i != 0):
+                card += cards_string[i]
+                if ((i+1) % 2 == 0) & (i != 0):
                     list_cards.append(card)
                     card = ""
-                card += cards_string[i]
-
             return list_cards
 
 
@@ -100,6 +103,8 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
 
         with open(file_dir, 'r', encoding = 'utf-8') as f:
             lines = [line.strip() for line in f]
+
+        num_of_players = 0
 
         i = 0
         while i < len(lines):
@@ -115,14 +120,16 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
             elif line.startswith("blinds_or_straddles"):
                 _ , value = line.split("=", 1)
                 value = string_to_list_floats(value)
+                num_of_players = len(value)
                 game_dic["small_blind"] = value[0]
-                game_dic["big_blind"] = value[0]
+                game_dic["big_blind"] = value[1]
                 i += 1
 
             elif line.startswith("starting_stacks"):
                 _, value = line.split("=", 1)
                 value = string_to_list_floats(value)
-                game_dic["starting_stacks"] = value
+                for k in range(len(value)):
+                    game_dic[f"starting_stack_{k+1}"] = value[k]
                 i += 1
 
             elif line.startswith("min_bet"):
@@ -137,9 +144,9 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
                 _ , value = line.split("=", 1)
                 value = re.findall(r'["\'](.*?)["\']', value)
 
-                actions_game = [] #listo of actions in single game
-                cards_players = {f"p{i+1}": "" for i in range(len(game_dic["starting_stacks"]))} #we save cards that each player has
-                community_cards = "" # cards on the table
+                actions_game = [] #list of actions in single game
+                cards_players = {f"p{i+1}": [] for i in range(num_of_players)} #we save cards that each player has
+                community_cards = [] # cards on the table
 
                 for j, action in enumerate(value):
                     action_dic = {}
@@ -151,12 +158,16 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
                     if action_dic["actor"] == "d": #dealer makes action
                         if action_dic["action"] == "dh": #dealer gives cards to a player
                             action_dic["target"] = action[2] #player who gets cards
-                            cards_players[action_dic["target"]] += action[3] #we save cards of the player
+                            cards_players[action_dic["target"]] += cards_string_to_list(action[3]) #we save cards of the player
                         if action_dic["action"] == "db": #dealer deals community cards
-                            community_cards += action[2]
-                            action_dic["community_cards"] = community_cards
+                            community_cards += cards_string_to_list(action[2])
+                            for k in range(len(community_cards)):
+                                action_dic[f"community_card_{k+1}"] = community_cards[k]
                     elif bool(re.fullmatch(r"p\d+", action_dic["actor"])): #player makes action
-                        action_dic["cards"] = cards_players[action_dic["actor"]]
+                        action_dic["hand_card_1"] = cards_players[action_dic["actor"]][0]
+                        action_dic["hand_card_2"] = cards_players[action_dic["actor"]][1]
+                        for k in range(len(community_cards)):
+                            action_dic[f"community_card_{k + 1}"] = community_cards[k]
                         if action_dic["action"] == "cbr":
                             action_dic["cbr_amount"] = action[2]
 
