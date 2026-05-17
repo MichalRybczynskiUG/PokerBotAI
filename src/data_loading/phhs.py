@@ -1,6 +1,71 @@
 from pathlib import Path
 import re
 
+from six import indexbytes
+
+
+def is_desired_game(index: int = 0, lines: list[str] = None, variant: str = 'NT', num_of_players: int = 2) -> tuple[int, int, bool]:
+    """
+    Checks first detected game in list of lines of phhs file starting from index.
+
+    Input:
+    __________
+    index: the index where the search shpuld start
+    lines: list with lines of the phhs file
+
+
+    Returns
+    __________
+    Tuple with:
+     - information where the game started (int)
+     - info where the search ended (where the info abut game ended) (int)
+     - True if the game is desired or False if it isn't (bool)
+
+    """
+    is_variant = False
+    is_n_players = False
+
+    index_game_start = index
+    i = index
+
+    while i < len(lines):
+        line = lines[i]
+
+        if line.startswith('variant'):
+            index_game_start = i
+
+            _, value_var = line.split('=', 1)
+            if value_var.strip().strip("'") == variant:
+                is_variant = True
+            i += 1
+
+
+        elif line.startswith('starting_stacks'):
+            _, value_starting_stacks = line.split('=', 1)
+            value_starting_stacks = value_starting_stacks.split(',')
+            num_of_players_game = len(value_starting_stacks)
+            if num_of_players_game == num_of_players:
+                is_n_players = True
+            i += 1
+
+
+        elif line.startswith("["):
+            if is_variant and is_n_players:
+                return index_game_start, i+1, True
+            else:
+                return index_game_start, i+1, False
+
+        else:
+            i += 1
+
+    if is_variant and is_n_players:
+        return index_game_start, i, True
+
+    else:
+        return index_game_start, i, False
+
+
+
 def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: int = 2) -> int:
     """
     Counts how many Heads-up No Limit Texas Hold'em games are in the phhs file
@@ -16,35 +81,17 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
     number of desired games in the file
     """
     num_games = 0
-
-    is_variant = False
-    is_n_players = False
+    lines = []
 
     with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
+        lines = [line.strip() for line in f]
 
-            if not line:
-                continue
+    i = 0
 
-            if line.startswith('variant'):
-                _, value_var = line.split('=', 1)
-                if value_var.strip().strip("'") == variant:
-                    is_variant = True
-
-            elif line.startswith('starting_stacks'):
-                _, value_starting_stacks = line.split('=', 1)
-                value_starting_stacks = value_starting_stacks.split(',')
-                num_of_players_game = len(value_starting_stacks)
-                if num_of_players_game == num_of_players:
-                    is_n_players = True
-
-            elif line.startswith("["):
-                if is_variant and is_n_players:
-                    num_games += 1
-
-                is_variant = False
-                is_n_players = False
+    while i < len(lines):
+        _, i, is_desired = is_desired_game(i, lines, variant = variant, num_of_players = num_of_players)
+        if is_desired:
+            num_games += 1
 
     return num_games
 
