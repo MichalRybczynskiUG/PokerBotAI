@@ -144,7 +144,7 @@ ENV/
 env.bak/
 venv.bak/
 .idea
-*.ipynb
+#*.ipynb
 
 # Spyder project settings
 .spyderproject
