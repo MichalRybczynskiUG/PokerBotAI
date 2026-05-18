@@ -95,7 +95,7 @@ def count_games_from_phhs(file_path: Path, variant: str = 'NT', num_of_players: 
 
     return num_games
 
-def load_phhs_file(file_dir) -> tuple[list,list]:
+def load_phhs_file(file_dir, variant: str = 'NT', num_of_players: int = 2) -> tuple[list,list]:
 
         def load_entire_string(index : int, lines : list[str], end_sign = ']'):
             """
@@ -143,91 +143,103 @@ def load_phhs_file(file_dir) -> tuple[list,list]:
                     card = ""
             return list_cards
 
+        def load_single_game(index_start_game: int = 0, index_end_game: int = None, lines: list[str] = None) -> tuple[dict, list]:
 
-        games_list = [] #list of all games
-        actions_list = [] #list of all actions in all games
-        game_dic = {} #dictionary representing single game
+            game_dic = {} #dictionary representing single game
+            actions_game = []  # list of actions in single game
 
-        with open(file_dir, 'r', encoding = 'utf-8') as f:
+            num_of_players = 0
+
+            i = index_start_game
+            while index_start_game <= i < index_end_game:
+
+                line = lines[i]
+
+                if line.startswith("variant"):
+                    _ , value = line.split("=", 1)
+                    value = value.strip().strip("'").strip('"')
+                    game_dic["variant"] = value
+                    i += 1
+
+                elif line.startswith("blinds_or_straddles"):
+                    _ , value = line.split("=", 1)
+                    value = string_to_list_floats(value)
+                    num_of_players = len(value)
+                    game_dic["small_blind"] = value[0]
+                    game_dic["big_blind"] = value[1]
+                    i += 1
+
+                elif line.startswith("starting_stacks"):
+                    _, value = line.split("=", 1)
+                    value = string_to_list_floats(value)
+                    for k in range(len(value)):
+                        game_dic[f"starting_stack_{k+1}"] = value[k]
+                    i += 1
+
+                elif line.startswith("min_bet"):
+                    _, value = line.split("=", 1)
+                    value = float(value.strip())
+                    game_dic["min_bet"] = value
+                    i+= 1
+
+                elif line.startswith("actions"):
+
+                    line, i = load_entire_string(i, lines) #concatenating actions stretched over different lines
+                    _ , value = line.split("=", 1)
+                    value = re.findall(r'["\'](.*?)["\']', value)
+
+                    cards_players = {f"p{i+1}": [] for i in range(num_of_players)} #we save cards that each player has
+                    community_cards = [] # cards on the table
+
+                    for j, action in enumerate(value):
+                        action_dic = {}
+                        action = action.split()
+
+                        action_dic["action_id"] = j
+                        action_dic["actor"] = action[0]
+                        action_dic["action"] = action[1]
+                        if action_dic["actor"] == "d": #dealer makes action
+                            if action_dic["action"] == "dh": #dealer gives cards to a player
+                                action_dic["target"] = action[2] #player who gets cards
+                                cards_players[action_dic["target"]] += cards_string_to_list(action[3]) #we save cards of the player
+                            if action_dic["action"] == "db": #dealer deals community cards
+                                community_cards += cards_string_to_list(action[2])
+                                for k in range(len(community_cards)):
+                                    action_dic[f"community_card_{k+1}"] = community_cards[k]
+                        elif bool(re.fullmatch(r"p\d+", action_dic["actor"])): #player makes action
+                            action_dic["hand_card_1"] = cards_players[action_dic["actor"]][0]
+                            action_dic["hand_card_2"] = cards_players[action_dic["actor"]][1]
+                            for k in range(len(community_cards)):
+                                action_dic[f"community_card_{k + 1}"] = community_cards[k]
+                            if action_dic["action"] == "cbr":
+                                action_dic["cbr_amount"] = action[2]
+
+                        actions_game.append(action_dic)
+
+
+                else:
+                    i += 1
+
+            return game_dic, actions_game
+
+        all_games = [] #all dictionaries representing all desired games
+        all_actions = [] #list of lists of all actions for each game, i-th list are actions for i-th game
+
+        with open(file_dir, 'r', encoding='utf-8') as f:
             lines = [line.strip() for line in f]
-
-        num_of_players = 0
 
         i = 0
         while i < len(lines):
+            index_start_game, index_end_game, is_desired = is_desired_game(i, lines, variant=variant, num_of_players=num_of_players)
 
-            line = lines[i]
-
-            if line.startswith("variant"):
-                _ , value = line.split("=", 1)
-                value = value.strip().strip("'").strip('"')
-                game_dic["variant"] = value
-                i += 1
-
-            elif line.startswith("blinds_or_straddles"):
-                _ , value = line.split("=", 1)
-                value = string_to_list_floats(value)
-                num_of_players = len(value)
-                game_dic["small_blind"] = value[0]
-                game_dic["big_blind"] = value[1]
-                i += 1
-
-            elif line.startswith("starting_stacks"):
-                _, value = line.split("=", 1)
-                value = string_to_list_floats(value)
-                for k in range(len(value)):
-                    game_dic[f"starting_stack_{k+1}"] = value[k]
-                i += 1
-
-            elif line.startswith("min_bet"):
-                _, value = line.split("=", 1)
-                value = float(value.strip())
-                game_dic["min_bet"] = value
-                i+= 1
-
-            elif line.startswith("actions"):
-
-                line, i = load_entire_string(i, lines) #concatenating actions stretched over different lines
-                _ , value = line.split("=", 1)
-                value = re.findall(r'["\'](.*?)["\']', value)
-
-                actions_game = [] #list of actions in single game
-                cards_players = {f"p{i+1}": [] for i in range(num_of_players)} #we save cards that each player has
-                community_cards = [] # cards on the table
-
-                for j, action in enumerate(value):
-                    action_dic = {}
-                    action = action.split()
-
-                    action_dic["action_id"] = j
-                    action_dic["actor"] = action[0]
-                    action_dic["action"] = action[1]
-                    if action_dic["actor"] == "d": #dealer makes action
-                        if action_dic["action"] == "dh": #dealer gives cards to a player
-                            action_dic["target"] = action[2] #player who gets cards
-                            cards_players[action_dic["target"]] += cards_string_to_list(action[3]) #we save cards of the player
-                        if action_dic["action"] == "db": #dealer deals community cards
-                            community_cards += cards_string_to_list(action[2])
-                            for k in range(len(community_cards)):
-                                action_dic[f"community_card_{k+1}"] = community_cards[k]
-                    elif bool(re.fullmatch(r"p\d+", action_dic["actor"])): #player makes action
-                        action_dic["hand_card_1"] = cards_players[action_dic["actor"]][0]
-                        action_dic["hand_card_2"] = cards_players[action_dic["actor"]][1]
-                        for k in range(len(community_cards)):
-                            action_dic[f"community_card_{k + 1}"] = community_cards[k]
-                        if action_dic["action"] == "cbr":
-                            action_dic["cbr_amount"] = action[2]
-
-                    actions_game.append(action_dic)
-
-                actions_list.append(actions_game)
-
-            elif line.startswith("[") and game_dic:
-                games_list.append(game_dic)
-                game_dic = {}
-                i += 1
+            if is_desired:
+                game_dic, actions_game = load_single_game(index_start_game, index_end_game, lines)
+                all_games.append(game_dic)
+                all_actions.append(actions_game)
+                i = index_end_game
 
             else:
-                i += 1
+                i = index_end_game
 
-        return games_list, actions_list
+        return all_games, all_actions
+
