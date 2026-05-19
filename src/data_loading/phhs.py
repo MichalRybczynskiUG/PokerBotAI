@@ -1,9 +1,6 @@
 from pathlib import Path
 import re
 
-from six import indexbytes
-
-
 def is_desired_game(index: int = 0, lines: list[str] = None, variant: str = 'NT', num_of_players: int = 2) -> tuple[int, int, bool]:
     """
     Checks first detected game in list of lines of phhs file starting from index.
