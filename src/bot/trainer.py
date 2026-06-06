@@ -92,7 +92,15 @@ class NFSPTrainer:
 
             env_action, raise_amount = map_to_env(action, self.env)
 
-            next_state, reward, done, _ = self.env.step(env_action, raise_amount)
+            next_state, rewards, done, _ = self.env.step(
+                env_action,
+                raise_amount
+            )
+
+            reward = 0.0
+
+            if done:
+                reward = rewards[current]
             next_state = next_state.to(self.device)
 
             if not done:
@@ -230,7 +238,7 @@ class NFSPTrainer:
                 )
 
             if ep % eval_every == 0 and ep > 0:
-                self.save_all(prefix=f"checkpoints/checkpoint_{ep}")
+                #self.save_all(prefix=f"checkpoints/checkpoint_{ep}")
                 self.save_models_only(prefix=f"models/model_{ep}")
 
                 print(f"\n=== EVAL at episode {ep} ===")

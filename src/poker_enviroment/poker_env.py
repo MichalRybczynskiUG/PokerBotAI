@@ -107,6 +107,7 @@ class PokerEnv:
         return get_legal_actions(self.current_player, self.engine.to_call)
 
     def step(self, action, raise_amount=None):
+
         if self.done:
             raise RuntimeError("Hand already finished")
 
@@ -115,16 +116,35 @@ class PokerEnv:
         player_idx = 0 if acting_player == self.p1 else 1
         street = self.street
 
-        slot = int(np.sum(self.action_history[player_idx, street].sum(axis=-1) > 0))
+        slot = int(
+            np.sum(
+                self.action_history[player_idx, street].sum(axis=-1) > 0
+            )
+        )
+
         bucket = map_action_to_bucket(action)
 
         if bucket is not None and slot < 5:
-            self.action_history[player_idx, street, slot, bucket] = 1.0
+            self.action_history[
+                player_idx,
+                street,
+                slot,
+                bucket
+            ] = 1.0
 
-        self.engine.step_betting(action, raise_amount)
+        self.engine.step_betting(
+            action,
+            raise_amount
+        )
 
-        active = [p for p in self.engine.players if not p.folded]
+        active = [
+            p for p in self.engine.players
+            if not p.folded
+        ]
 
+        # -----------------------------
+        # Fold -> natychmiastowy koniec
+        # -----------------------------
         if len(active) == 1:
             winner = active[0]
 
@@ -133,24 +153,31 @@ class PokerEnv:
             winner.stack += self.engine.pot
             self.engine.pot = 0
 
-            if acting_player == self.p1:
-                reward = (
-                                 self.p1.stack - self.initial_stack_p1
-                         ) / BIG_BLIND
-            else:
-                reward = (
-                                 self.p2.stack - self.initial_stack_p2
-                         ) / BIG_BLIND
+            rewards = {
+                self.p1:
+                    (self.p1.stack - self.initial_stack_p1)
+                    / BIG_BLIND,
+
+                self.p2:
+                    (self.p2.stack - self.initial_stack_p2)
+                    / BIG_BLIND
+            }
 
             obs = self._get_observation(winner)
 
-            return obs, reward, True, {}
+            return obs, rewards, True, {}
 
-        self.current_player = self.engine.players[self.engine.current_player_idx]
+        self.current_player = self.engine.players[
+            self.engine.current_player_idx
+        ]
 
-        active = [p for p in self.engine.players if not p.folded]
+        active = [
+            p for p in self.engine.players
+            if not p.folded
+        ]
 
         if all(p.all_in for p in active):
+
             while self.street != RIVER:
                 self._advance_street()
 
@@ -159,22 +186,24 @@ class PokerEnv:
         if self.engine.betting_round_finished():
             self._advance_street()
 
-        reward = 0.0
+        rewards = None
 
         if self.done:
+            rewards = {
+                self.p1:
+                    (self.p1.stack - self.initial_stack_p1)
+                    / BIG_BLIND,
 
-            if acting_player == self.p1:
-                reward = (
-                                 self.p1.stack - self.initial_stack_p1
-                         ) / BIG_BLIND
-            else:
-                reward = (
-                                 self.p2.stack - self.initial_stack_p2
-                         ) / BIG_BLIND
+                self.p2:
+                    (self.p2.stack - self.initial_stack_p2)
+                    / BIG_BLIND
+            }
 
-        obs = self._get_observation(self.current_player)
+        obs = self._get_observation(
+            self.current_player
+        )
 
-        return obs, reward, self.done, {}
+        return obs, rewards, self.done, {}
 
     def _advance_street(self):
         for p in self.players:

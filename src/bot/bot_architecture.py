@@ -5,109 +5,58 @@ import torch.nn.functional as F
 # Shared Encoder
 
 class StateEncoder(nn.Module):
-    """Multi-layer perceptron (MLP) that encodes input states into a latent feature space. """
 
-    def __init__(self, input_dim, hidden_dim=256):
-        """Initialize the encoder network.
-
-        The architecture consists of two fully connected layers with ReLU activations.
-
-        Args:
-            input_dim (int): Dimensionality of the input state.
-            hidden_dim (int, optional): Size of hidden layers and output embedding.
-                Defaults to 256.
-        """
+    def __init__(self, input_dim):
         super().__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 1024),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
+
+            nn.Linear(256, 256),
             nn.ReLU()
         )
 
     def forward(self, x):
-        """Compute latent representation of the input.
-
-        Args:
-            x (Tensor): Input tensor of shape (batch_size, input_dim).
-
-        Returns:
-            Tensor: Encoded features of shape (batch_size, hidden_dim).
-        """
         return self.net(x)
 
 
 #Q-Network (Best Response)
 class QNetwork(nn.Module):
-    """Q-network that maps states to action values using a shared encoder.
-
-    Combines a state encoder with a linear head to produce Q-values
-    for each possible action.
-    """
 
     def __init__(self, state_dim, num_actions):
-        """Initialize the Q-network.
-
-        Args:
-            state_dim (int): Dimensionality of the input state.
-            num_actions (int): Number of discrete actions.
-        """
         super().__init__()
 
         self.encoder = StateEncoder(state_dim)
-        self.head = nn.Linear(512, num_actions)
+
+        self.head = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_actions)
+        )
 
     def forward(self, x):
-        """Compute Q-values for given states.
-
-        Args:
-            x (Tensor): Input tensor of shape (batch_size, state_dim).
-
-        Returns:
-            Tensor: Q-values of shape (batch_size, num_actions).
-        """
         z = self.encoder(x)
-        q = self.head(z)
-        return q
+        return self.head(z)
 
 #Policy Network (Average Strategy)
 
 class PolicyNetwork(nn.Module):
-    """Policy network that maps states to action probabilities.
-
-    Uses a shared state encoder followed by a linear layer and softmax
-    to produce a probability distribution over actions.
-    """
 
     def __init__(self, state_dim, num_actions):
-        """Initialize the policy network.
-
-        Args:
-            state_dim (int): Dimensionality of the input state.
-            num_actions (int): Number of discrete actions.
-        """
         super().__init__()
 
         self.encoder = StateEncoder(state_dim)
-        self.head = nn.Linear(512, num_actions)
+
+        self.head = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_actions)
+        )
 
     def forward(self, x):
-        """Compute action probabilities for given states.
-
-        Args:
-            x (Tensor): Input tensor of shape (batch_size, state_dim).
-
-        Returns:
-            Tensor: Action probabilities of shape (batch_size, num_actions).
-        """
         z = self.encoder(x)
-        logits = self.head(z)
-        return logits
+        return self.head(z)
 
 
 

@@ -65,7 +65,7 @@ def encode_cards(cards):
         vec[idx] = 1.0
 
     return vec
-
+"""
 def encode_observation(self, player):
     opp = self.p1 if player is self.p2 else self.p2
     max_stack = self.initial_stack * 2
@@ -103,3 +103,156 @@ def encode_observation(self, player):
     ])
 
     return torch.tensor(obs, dtype=torch.float32)
+"""
+"""
+def encode_observation(self, player):
+
+    cards_vec = encode_round_cards(
+        player.hand,
+        self.board
+    )
+
+    c1, c2 = player.hand
+
+    r1 = RANKS.index(c1[0])
+    r2 = RANKS.index(c2[0])
+
+    high_rank = max(r1, r2) / 12.0
+    low_rank = min(r1, r2) / 12.0
+
+    is_pair = float(r1 == r2)
+    is_suited = float(c1[1] == c2[1])
+
+    gap = abs(r1 - r2) / 12.0
+
+    connector = float(abs(r1 - r2) == 1)
+
+    broadway1 = float(r1 >= 8)
+    broadway2 = float(r2 >= 8)
+
+    hand_features = np.array([
+        high_rank,
+        low_rank,
+        is_pair,
+        is_suited,
+        gap,
+        connector,
+        broadway1,
+        broadway2,
+    ], dtype=np.float32)
+
+    obs = np.concatenate([
+        cards_vec,       # 208
+        hand_features    # 8
+    ])
+
+    return torch.tensor(
+        obs,
+        dtype=torch.float32
+    )
+"""
+def encode_observation(self, player):
+    opp = self.p1 if player is self.p2 else self.p2
+
+    max_stack = self.initial_stack * 2
+
+    # =========================
+    # KARTY (208)
+    # =========================
+
+    cards_vec = encode_round_cards(
+        player.hand,
+        self.board
+    )
+
+    # =========================
+    # CECHY RĘKI (8)
+    # =========================
+
+    c1, c2 = player.hand
+
+    r1 = RANKS.index(c1[0])
+    r2 = RANKS.index(c2[0])
+
+    high_rank = max(r1, r2) / 12.0
+    low_rank = min(r1, r2) / 12.0
+
+    is_pair = float(r1 == r2)
+    is_suited = float(c1[1] == c2[1])
+
+    gap = abs(r1 - r2) / 12.0
+
+    connector = float(abs(r1 - r2) == 1)
+
+    broadway1 = float(r1 >= 8)
+    broadway2 = float(r2 >= 8)
+
+    hand_features = np.array([
+        high_rank,
+        low_rank,
+        is_pair,
+        is_suited,
+        gap,
+        connector,
+        broadway1,
+        broadway2,
+    ], dtype=np.float32)
+
+    # =========================
+    # CECHY STANU (6)
+    # =========================
+
+    stack_self = norm(player.stack, max_stack)
+
+    stack_opp = norm(
+        opp.stack,
+        max_stack
+    )
+
+    pot = norm(
+        self.engine.pot,
+        max_stack
+    )
+
+    to_call_amount = max(
+        0,
+        self.engine.to_call - player.street_bet
+    )
+
+    to_call = norm(
+        to_call_amount,
+        max_stack
+    )
+
+    pot_odds = np.array([
+        to_call_amount / max(self.engine.pot, 1)
+    ], dtype=np.float32)
+
+    position = np.array([
+        1.0 if player.position == "SB" else 0.0,
+        1.0 if player.position == "BB" else 0.0
+    ], dtype=np.float32)
+
+    state_features = np.array([
+        stack_self[0],
+        stack_opp[0],
+        pot[0],
+        to_call[0],
+        pot_odds[0],
+        position[1],  # BB
+    ], dtype=np.float32)
+
+    # =========================
+    # FINAL OBS
+    # =========================
+
+    obs = np.concatenate([
+        cards_vec,        # 208
+        hand_features,    # 8
+        state_features    # 6
+    ])
+
+    return torch.tensor(
+        obs,
+        dtype=torch.float32
+    )
