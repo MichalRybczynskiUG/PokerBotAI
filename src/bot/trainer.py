@@ -127,7 +127,7 @@ class NFSPTrainer:
                     self.train_policy(self.model_p1, self.sl_buffer_p1, self.policy_opt_p1)
                     self.train_policy(self.model_p2, self.sl_buffer_p2, self.policy_opt_p2)
 
-            if self.step_count % 1000 == 0:
+            if self.step_count % 250 == 0:
                 self.model_p1.update_target()
                 self.model_p2.update_target()
 
@@ -235,9 +235,9 @@ class NFSPTrainer:
 
                 print(f"\n=== EVAL at episode {ep} ===")
 
-                ev, bb100, mbb = evaluate_vs_random(self.model_p1, episodes=1000)
+                ev = evaluate_vs_random(self.model_p1, episodes=1000)
 
-                print(f"EV: {ev:.2f} | bb/100: {bb100:.2f} | mbb/h: {mbb:.2f}")
+                print(f"EV: {ev:.2f}")
 
     def save_all(self, prefix="checkpoint"):
         checkpoint = {

@@ -79,6 +79,11 @@ def encode_observation(self, player):
     to_call_amount = max(0, self.engine.to_call - player.street_bet)
     to_call = norm(to_call_amount, max_stack)
 
+    # NOWE
+    pot_odds = np.array([
+        to_call_amount / max(self.engine.pot, 1)
+    ], dtype=np.float32)
+
     position = np.array([
         1.0 if player.position == "SB" else 0.0,
         1.0 if player.position == "BB" else 0.0
@@ -93,6 +98,7 @@ def encode_observation(self, player):
         stack_opp,
         pot,
         to_call,
+        pot_odds,     # nowa cecha
         position
     ])
 

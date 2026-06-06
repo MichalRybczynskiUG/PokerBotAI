@@ -9,19 +9,14 @@ import numpy as np
 def map_action_to_bucket(action):
     if action == ACTION_CALL:
         return 0
-
-    elif action in [ACTION_BET_25, ACTION_BET_33]:
+    elif action == ACTION_BET_50:
         return 1
 
-    elif action == ACTION_BET_50:
+    elif action == ACTION_BET_100:
         return 2
 
-    elif action in [ACTION_BET_75, ACTION_BET_100]:
-        return 3
-
     elif action == ACTION_ALL_IN:
-        return 4
-
+        return 3
     else:
         return None
 
@@ -54,7 +49,7 @@ class PokerEnv:
         self.current_player = None
         self.last_stacks = None
 
-        self.action_history = np.zeros((2, 4, 5, 5), dtype=np.float32)
+        self.action_history = np.zeros((2, 4, 5, 4), dtype=np.float32)
 
 
     @property

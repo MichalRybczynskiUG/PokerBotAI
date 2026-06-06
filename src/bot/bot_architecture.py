@@ -295,7 +295,7 @@ def compute_policy_loss(model, batch, legal_masks):
 
     return loss
 
-def build_optimizers(model, lr=1e-3):
+def build_optimizers(model, lr=1e-4):
     """Create optimizers for Q-network and policy network.
 
     Uses Adam optimizer for both components of the NFSP model.

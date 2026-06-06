@@ -23,7 +23,10 @@ def evaluate_vs_random(model, episodes=1000):
     device = next(model.parameters()).device
 
     total_profit = 0.0
-    action_counts = np.zeros(8)
+    action_counts = np.zeros(5)
+
+    q_sums = np.zeros(5)
+    q_count = 0
 
     for ep in range(episodes):
 
@@ -45,7 +48,6 @@ def evaluate_vs_random(model, episodes=1000):
         while not done:
             current = env.current_player
 
-            # skip ALL-IN
             if current.all_in:
                 _, _, done, _ = env.step(1, None)
                 state = get_model_state()
@@ -60,15 +62,13 @@ def evaluate_vs_random(model, episodes=1000):
             )
 
             if (model_is_p1 and current == env.p1) or \
-                    (not model_is_p1 and current == env.p2):
+               (not model_is_p1 and current == env.p2):
 
-                legal = env.legal_actions()
+                with torch.no_grad():
+                    q = model.q_net(state.unsqueeze(0)).squeeze(0)
 
-                legal_mask = torch.tensor(
-                    legal_action_mask(legal),
-                    dtype=torch.float32,
-                    device=device
-                )
+                    q_sums += q.cpu().numpy()
+                    q_count += 1
 
                 action, _ = select_action_nfsp(
                     model,
@@ -105,6 +105,18 @@ def evaluate_vs_random(model, episodes=1000):
 
     if action_counts.sum() > 0:
         print("Action distribution:", action_counts / action_counts.sum())
+
+    if q_count > 0:
+        avg_q = q_sums / q_count
+
+        print("\nAverage Q values:")
+        print(
+            f"fold={avg_q[0]:.3f} "
+            f"call={avg_q[1]:.3f} "
+            f"bet50={avg_q[2]:.3f} "
+            f"bet100={avg_q[3]:.3f} "
+            f"allin={avg_q[4]:.3f} "
+        )
 
     print(f"EV: {ev:.2f}")
 

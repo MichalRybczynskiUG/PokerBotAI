@@ -17,10 +17,7 @@ def get_legal_actions(player, to_call):
 
     if player.stack > call_amount:
         actions.extend([
-            ACTION_BET_25,
-            ACTION_BET_33,
             ACTION_BET_50,
-            ACTION_BET_75,
             ACTION_BET_100,
         ])
 
@@ -80,10 +77,7 @@ class PokerEngine:
             self.actions_without_raise += 1
 
         elif action in [
-            ACTION_BET_25,
-            ACTION_BET_33,
             ACTION_BET_50,
-            ACTION_BET_75,
             ACTION_BET_100,
         ]:
             if raise_amount is None:
