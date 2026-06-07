@@ -40,10 +40,10 @@ class NFSPTrainer:
         self.q_opt_p1, self.policy_opt_p1 = build_optimizers(self.model_p1)
         self.q_opt_p2, self.policy_opt_p2 = build_optimizers(self.model_p2)
 
-        self.rl_buffer_p1 = ReplayBuffer(600_000)
+        self.rl_buffer_p1 = ReplayBuffer(1_000_000)
         self.sl_buffer_p1 = ReservoirBuffer(1_000_000)
 
-        self.rl_buffer_p2 = ReplayBuffer(600_000)
+        self.rl_buffer_p2 = ReplayBuffer(1_000_000)
         self.sl_buffer_p2 = ReservoirBuffer(1_000_000)
 
         self.gamma = 0.99

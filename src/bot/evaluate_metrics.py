@@ -398,48 +398,29 @@ def analyze_starting_hands(model, episodes=50000):
 
     return results
 
-def inspect_q(model, env, player):
+def inspect_model(
+    model,
+    env,
+    hand,
+    board=None,
+    model_type="dqn"
+):
 
-    device = next(model.parameters()).device
+    if board is None:
+        board = []
 
-    state = env._get_observation(player).to(device)
+    device = next(
+        model.parameters()
+    ).device
 
-    with torch.no_grad():
+    env.reset()
 
-        q = model.q_net(state.unsqueeze(0))[0]
+    env.p1.hand = hand
+    env.board = board
 
-        z = model.q_net.encoder(
-            state.unsqueeze(0)
-        )[0]
-
-    print()
-    print("=" * 60)
-
-    print(
-        "Hand:",
-        hand_to_ids(
-            player.hand[0],
-            player.hand[1]
-        )
-    )
-
-    print("\nState:")
-    print(
-        state.cpu()
-        .numpy()
-        .round(3)
-    )
-
-    print("\nQ values:")
-    print(
-        f"fold={q[0]:.3f} "
-        f"call={q[1]:.3f} "
-        f"bet50={q[2]:.3f} "
-        f"bet100={q[3]:.3f} "
-        f"allin={q[4]:.3f}"
-    )
-
-    best_action = torch.argmax(q).item()
+    state = env._get_observation(
+        env.p1
+    ).to(device)
 
     actions = [
         "fold",
@@ -449,21 +430,69 @@ def inspect_q(model, env, player):
         "allin"
     ]
 
+    with torch.no_grad():
+
+        if model_type == "dqn":
+
+            values = model.q_net(
+                state.unsqueeze(0)
+            )[0]
+
+            z = model.q_net.encoder(
+                state.unsqueeze(0)
+            )[0]
+
+            label = "Q values"
+
+        elif model_type == "policy":
+
+            logits = model.policy_net(
+                state.unsqueeze(0)
+            )[0]
+
+            values = torch.softmax(
+                logits,
+                dim=-1
+            )
+
+            z = model.policy_net.encoder(
+                state.unsqueeze(0)
+            )[0]
+
+            label = "Probabilities"
+
+        else:
+            raise ValueError(
+                "model_type must be "
+                "'dqn' or 'policy'"
+            )
+
+    best_action = torch.argmax(
+        values
+    ).item()
+
+    print()
+    print("=" * 60)
+
+    print("Hand :", hand)
+    print("Board:", board)
+
+    print(f"\n{label}:")
+
+    for a, v in zip(actions, values):
+
+        print(
+            f"{a:>6}: "
+            f"{v.item():8.3f}"
+        )
+
     print(
-        f"\nBest action: "
-        f"{actions[best_action]}"
+        "\nBest action:",
+        actions[best_action]
     )
 
-    print("\nEncoder embedding (first 30 dims):")
     print(
-        z[:30]
-        .cpu()
-        .numpy()
-        .round(3)
-    )
-
-    print("\nEmbedding norm:")
-    print(
+        "\nEmbedding norm:",
         round(
             torch.norm(z).item(),
             3
@@ -472,87 +501,10 @@ def inspect_q(model, env, player):
 
     print("=" * 60)
 
-def compare_hands(model, env):
-
-    device = next(model.parameters()).device
-
-    test_hands = [
-        ("AA",  ["As", "Ah"]),
-        ("KK",  ["Ks", "Kh"]),
-        ("QQ",  ["Qs", "Qh"]),
-        ("JJ",  ["Js", "Jh"]),
-        ("TT",  ["Ts", "Th"]),
-        ("AKs", ["As", "Ks"]),
-        ("AQs", ["As", "Qs"]),
-        ("AJs", ["As", "Js"]),
-        ("ATo", ["As", "Td"]),
-        ("KQs", ["Ks", "Qs"]),
-        ("72o", ["7c", "2d"]),
-        ("32o", ["3c", "2d"]),
-        ("42o", ["4c", "2d"]),
-    ]
-
-    actions = [
-        "fold",
-        "call",
-        "bet50",
-        "bet100",
-        "allin"
-    ]
-
-    print()
-    print(
-        f"{'Hand':<5} "
-        f"{'Fold':>8} "
-        f"{'Call':>8} "
-        f"{'B50':>8} "
-        f"{'B100':>8} "
-        f"{'AI':>8} "
-        f"{'Best':>8} "
-        f"{'Norm':>8}"
-    )
-
-    print("-" * 80)
-
-    for name, hand in test_hands:
-
-        env.reset()
-
-        env.board = []
-
-        env.p1.hand = hand
-
-        state = env._get_observation(
-            env.p1
-        ).to(device)
-
-        with torch.no_grad():
-
-            q = model.q_net(
-                state.unsqueeze(0)
-            )[0]
-
-            z = model.q_net.encoder(
-                state.unsqueeze(0)
-            )[0]
-
-        best_action = torch.argmax(q).item()
-
-        print(
-            f"{name:<5}"
-            f"{q[0].item():8.2f}"
-            f"{q[1].item():8.2f}"
-            f"{q[2].item():8.2f}"
-            f"{q[3].item():8.2f}"
-            f"{q[4].item():8.2f}"
-            f"{actions[best_action]:>8}"
-            f"{torch.norm(z).item():8.2f}"
-        )
-
-        print(
-            "   emb:",
-            z[:10]
-            .cpu()
-            .numpy()
-            .round(2)
-        )
+    return {
+        "values": values.cpu(),
+        "embedding": z.cpu(),
+        "best_action": actions[
+            best_action
+        ]
+    }
