@@ -2,18 +2,18 @@ from evaluate_metrics import (load_model, evaluate_vs_random,
 evaluate_model_vs_model, inspect_model)
 from src.poker_enviroment.poker_env import PokerEnv
 
-STATE_DIM = 382 #375
-NUM_ACTIONS = 5
+STATE_DIM = 302 #375
+NUM_ACTIONS = 3
 
-model_1 = load_model("models/model_200000s4.pt", STATE_DIM, NUM_ACTIONS)
-model_2 = load_model("models/model_350000.pt", STATE_DIM, NUM_ACTIONS)
+#model_1 = load_model("models/model_75000.pt", STATE_DIM, NUM_ACTIONS)
+#model_2 = load_model("models/model_100000.pt", STATE_DIM, NUM_ACTIONS)
 
 #evaluate_vs_random(model_2, episodes=10000)
 
-evaluate_model_vs_model(model_1, model_2, episodes=10000)
+#evaluate_model_vs_model(model_1, model_2, episodes=10000)
 
 model = load_model(
-    "models/model_350000.pt",
+    "models/model_100000.pt",
     STATE_DIM,
     NUM_ACTIONS
 )

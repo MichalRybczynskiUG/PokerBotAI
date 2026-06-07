@@ -255,9 +255,13 @@ class PokerEnv:
             if not p.folded
         }
 
-        pots = build_pots(self.players, self.engine.pot)
+        pots = build_pots(
+            self.players,
+            self.engine.pot
+        )
 
         for pot in pots:
+
             amount = pot["amount"]
 
             eligible = [
@@ -268,7 +272,13 @@ class PokerEnv:
             if not eligible:
                 continue
 
-            best_score = min(scores[p] for p in eligible)
+            # eval7:
+            # większy score = lepszy układ
+
+            best_score = max(
+                scores[p]
+                for p in eligible
+            )
 
             winners = [
                 p for p in eligible
@@ -276,7 +286,10 @@ class PokerEnv:
             ]
 
             share = amount // len(winners)
-            remainder = amount % len(winners)
+
+            remainder = (
+                    amount % len(winners)
+            )
 
             for w in winners:
                 w.stack += share
