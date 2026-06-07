@@ -4,9 +4,9 @@ import os
 os.makedirs("checkpoints", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
-STATE_DIM = 382
-NUM_ACTIONS = 5
+STATE_DIM = 302
+NUM_ACTIONS = 3
 
 trainer = NFSPTrainer(STATE_DIM, NUM_ACTIONS)
 
-trainer.train(episodes=2001000,eval_every=25000)
+trainer.train(episodes=200000, eval_every=25000)

@@ -1,15 +1,14 @@
 import torch
 from bot_architecture import NFSPModel, select_action_nfsp
 from src.poker_enviroment.poker_env import PokerEnv
-from src.poker_enviroment.observation import legal_action_mask
 from action_mapper import map_to_env
-import numpy as np
 from src.bot.random_bot import RandomBot
 
 from collections import defaultdict
 import numpy as np
 from src.poker_enviroment.observation import legal_action_mask, hand_to_ids
 from src.poker_enviroment.constants import PREFLOP
+from src.poker_enviroment.constants import ACTION_CALL
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,15 +21,17 @@ def load_model(path, state_dim, num_actions):
     return model
 
 def evaluate_vs_random(model, episodes=1000):
+
     env = PokerEnv()
     random_bot = RandomBot()
 
     device = next(model.parameters()).device
 
     total_profit = 0.0
-    action_counts = np.zeros(5)
 
-    q_sums = np.zeros(5)
+    action_counts = np.zeros(3)
+    q_sums = np.zeros(3)
+
     q_count = 0
 
     for ep in range(episodes):
@@ -51,10 +52,11 @@ def evaluate_vs_random(model, episodes=1000):
         state = get_model_state()
 
         while not done:
+
             current = env.current_player
 
             if current.all_in:
-                _, _, done, _ = env.step(1, None)
+                _, _, done, _ = env.step(ACTION_CALL)
                 state = get_model_state()
                 continue
 
@@ -66,11 +68,16 @@ def evaluate_vs_random(model, episodes=1000):
                 device=device
             )
 
-            if (model_is_p1 and current == env.p1) or \
-               (not model_is_p1 and current == env.p2):
+            if (
+                (model_is_p1 and current == env.p1)
+                or
+                (not model_is_p1 and current == env.p2)
+            ):
 
                 with torch.no_grad():
-                    q = model.q_net(state.unsqueeze(0)).squeeze(0)
+                    q = model.q_net(
+                        state.unsqueeze(0)
+                    ).squeeze(0)
 
                     q_sums += q.cpu().numpy()
                     q_count += 1
@@ -85,17 +92,20 @@ def evaluate_vs_random(model, episodes=1000):
 
                 action_counts[action] += 1
 
-                env_action, raise_amount = map_to_env(action, env)
+                env_action = map_to_env(
+                    action,
+                    env
+                )
 
             else:
-                result = random_bot.select_action(env)
 
-                if isinstance(result, tuple):
-                    env_action, raise_amount = result
-                else:
-                    env_action, raise_amount = map_to_env(result, env)
+                env_action = random_bot.select_action(
+                    env
+                )
 
-            _, _, done, _ = env.step(env_action, raise_amount)
+            _, _, done, _ = env.step(
+                env_action
+            )
 
             state = get_model_state()
 
@@ -109,44 +119,58 @@ def evaluate_vs_random(model, episodes=1000):
     ev = total_profit / episodes
 
     if action_counts.sum() > 0:
-        print("Action distribution:", action_counts / action_counts.sum())
+        print(
+            "Action distribution:",
+            action_counts / action_counts.sum()
+        )
 
     if q_count > 0:
+
         avg_q = q_sums / q_count
 
         print("\nAverage Q values:")
+
         print(
             f"fold={avg_q[0]:.3f} "
             f"call={avg_q[1]:.3f} "
-            f"bet50={avg_q[2]:.3f} "
-            f"bet100={avg_q[3]:.3f} "
-            f"allin={avg_q[4]:.3f} "
+            f"raise={avg_q[2]:.3f}"
         )
 
     print(f"EV: {ev:.2f}")
 
     return ev
 
+
 def evaluate_model_vs_model(model_A, model_B, episodes=5000):
+
     env = PokerEnv()
+
     total_profit = 0
     wins_A = 0
 
-    action_counts_A = torch.zeros(8)
-    action_counts_B = torch.zeros(8)
+    action_counts_A = torch.zeros(3)
+    action_counts_B = torch.zeros(3)
 
     for ep in range(episodes):
+
         state = env.reset().to(device)
+
         done = False
 
         A_is_p1 = (ep % 2 == 0)
 
         while not done:
+
             current = env.current_player
 
             if current.all_in:
-                state, _, done, _ = env.step(1, None)
+
+                state, _, done, _ = env.step(
+                    ACTION_CALL
+                )
+
                 state = state.to(device)
+
                 continue
 
             legal = env.legal_actions()
@@ -157,8 +181,11 @@ def evaluate_model_vs_model(model_A, model_B, episodes=5000):
                 device=device
             )
 
-            if (A_is_p1 and current == env.p1) or \
-               (not A_is_p1 and current == env.p2):
+            if (
+                (A_is_p1 and current == env.p1)
+                or
+                (not A_is_p1 and current == env.p2)
+            ):
                 model = model_A
                 is_A_turn = True
             else:
@@ -178,41 +205,88 @@ def evaluate_model_vs_model(model_A, model_B, episodes=5000):
             else:
                 action_counts_B[action] += 1
 
-            env_action, raise_amount = map_to_env(action, env)
-            state, _, done, _ = env.step(env_action, raise_amount)
+            env_action = map_to_env(
+                action,
+                env
+            )
+
+            state, _, done, _ = env.step(
+                env_action
+            )
+
             state = state.to(device)
 
         if A_is_p1:
-            profit = env.p1.stack - env.initial_stack
+            profit = (
+                env.p1.stack
+                - env.initial_stack_p1
+            )
         else:
-            profit = env.p2.stack - env.initial_stack
+            profit = (
+                env.p2.stack
+                - env.initial_stack_p2
+            )
 
         total_profit += profit
+
         if profit > 0:
             wins_A += 1
 
         if (ep + 1) % 1000 == 0:
-            print(f"[{ep+1}/{episodes}] EV: {total_profit/(ep+1):.4f}")
+
+            print(
+                f"[{ep+1}/{episodes}] "
+                f"EV: {total_profit/(ep+1):.4f}"
+            )
 
     ev = total_profit / episodes
     winrate = wins_A / episodes
 
-    probs_A = action_counts_A / (action_counts_A.sum() + 1e-8)
-    probs_B = action_counts_B / (action_counts_B.sum() + 1e-8)
+    probs_A = (
+        action_counts_A
+        / (action_counts_A.sum() + 1e-8)
+    )
+
+    probs_B = (
+        action_counts_B
+        / (action_counts_B.sum() + 1e-8)
+    )
 
     print("\n=== FINAL ===")
     print(f"EV: {ev:.4f}")
     print(f"Winrate A: {winrate:.3f}")
 
     print("\n=== ACTION DISTRIBUTION ===")
-    print("Model A:", probs_A.cpu().numpy())
-    print("Model B:", probs_B.cpu().numpy())
 
-    entropy_A = -(probs_A * torch.log(probs_A + 1e-8)).sum()
-    entropy_B = -(probs_B * torch.log(probs_B + 1e-8)).sum()
+    print(
+        "Model A:",
+        probs_A.cpu().numpy()
+    )
 
-    print(f"\nEntropy A: {entropy_A.item():.4f}")
-    print(f"Entropy B: {entropy_B.item():.4f}")
+    print(
+        "Model B:",
+        probs_B.cpu().numpy()
+    )
+
+    entropy_A = -(
+        probs_A
+        * torch.log(probs_A + 1e-8)
+    ).sum()
+
+    entropy_B = -(
+        probs_B
+        * torch.log(probs_B + 1e-8)
+    ).sum()
+
+    print(
+        f"\nEntropy A: "
+        f"{entropy_A.item():.4f}"
+    )
+
+    print(
+        f"Entropy B: "
+        f"{entropy_B.item():.4f}"
+    )
 
     return ev
 
@@ -223,7 +297,10 @@ def analyze_starting_hands(model, episodes=50000):
 
     device = next(model.parameters()).device
 
-    hand_action_stats = defaultdict(lambda: np.zeros(5))
+    hand_action_stats = defaultdict(
+        lambda: np.zeros(3)
+    )
+
     hand_ev_stats = defaultdict(list)
 
     for ep in range(episodes):
@@ -254,7 +331,9 @@ def analyze_starting_hands(model, episodes=50000):
             current = env.current_player
 
             if current.all_in:
-                _, _, done, _ = env.step(1, None)
+                _, _, done, _ = env.step(
+                    ACTION_CALL
+                )
                 continue
 
             legal = env.legal_actions()
@@ -265,11 +344,15 @@ def analyze_starting_hands(model, episodes=50000):
                 device=device
             )
 
-            # ruch modelu
-            if (model_is_p1 and current == env.p1) or \
-               (not model_is_p1 and current == env.p2):
+            if (
+                (model_is_p1 and current == env.p1)
+                or
+                (not model_is_p1 and current == env.p2)
+            ):
 
-                state = env._get_observation(current).to(device)
+                state = env._get_observation(
+                    current
+                ).to(device)
 
                 action, _ = select_action_nfsp(
                     model,
@@ -279,39 +362,45 @@ def analyze_starting_hands(model, episodes=50000):
                     epsilon=0.0
                 )
 
-                if not logged_action and env.street == PREFLOP:
-                    hand_action_stats[tracked_hand][action] += 1
+                if (
+                    not logged_action
+                    and env.street == PREFLOP
+                ):
+                    hand_action_stats[
+                        tracked_hand
+                    ][action] += 1
+
                     logged_action = True
 
-                env_action, raise_amount = map_to_env(
+                env_action = map_to_env(
                     action,
                     env
                 )
 
-            # ruch randoma
             else:
 
-                result = random_bot.select_action(env)
-
-                if isinstance(result, tuple):
-                    env_action, raise_amount = result
-                else:
-                    env_action, raise_amount = map_to_env(
-                        result,
-                        env
-                    )
+                env_action = random_bot.select_action(
+                    env
+                )
 
             _, _, done, _ = env.step(
-                env_action,
-                raise_amount
+                env_action
             )
 
         if model_is_p1:
-            profit = env.p1.stack - start_stack_p1
+            profit = (
+                env.p1.stack
+                - start_stack_p1
+            )
         else:
-            profit = env.p2.stack - start_stack_p2
+            profit = (
+                env.p2.stack
+                - start_stack_p2
+            )
 
-        hand_ev_stats[tracked_hand].append(profit)
+        hand_ev_stats[
+            tracked_hand
+        ].append(profit)
 
     print("\n===== STARTING HAND ANALYSIS =====\n")
 
@@ -319,7 +408,9 @@ def analyze_starting_hands(model, episodes=50000):
 
     for hand in hand_ev_stats:
 
-        profits = np.array(hand_ev_stats[hand])
+        profits = np.array(
+            hand_ev_stats[hand]
+        )
 
         n = len(profits)
 
@@ -335,7 +426,10 @@ def analyze_starting_hands(model, episodes=50000):
 
         probs = (
             hand_action_stats[hand]
-            / max(hand_action_stats[hand].sum(), 1)
+            / max(
+                hand_action_stats[hand].sum(),
+                1
+            )
         )
 
         results.append(
@@ -363,12 +457,10 @@ def analyze_starting_hands(model, episodes=50000):
         f"{'MAX':>8} "
         f"{'Fold':>7} "
         f"{'Call':>7} "
-        f"{'B50':>7} "
-        f"{'B100':>7} "
-        f"{'AI':>7}"
+        f"{'Raise':>7}"
     )
 
-    print("-" * 120)
+    print("-" * 100)
 
     for (
         avg_ev,
@@ -391,9 +483,7 @@ def analyze_starting_hands(model, episodes=50000):
             f"{max_ev:8.0f} "
             f"{probs[0]:7.2f} "
             f"{probs[1]:7.2f} "
-            f"{probs[2]:7.2f} "
-            f"{probs[3]:7.2f} "
-            f"{probs[4]:7.2f}"
+            f"{probs[2]:7.2f}"
         )
 
     return results
@@ -425,9 +515,7 @@ def inspect_model(
     actions = [
         "fold",
         "call",
-        "bet50",
-        "bet100",
-        "allin"
+        "raise"
     ]
 
     with torch.no_grad():
@@ -499,6 +587,15 @@ def inspect_model(
         )
     )
 
+    print("=" * 60)
+
+    return {
+        "values": values.cpu(),
+        "embedding": z.cpu(),
+        "best_action": actions[
+            best_action
+        ]
+    }
     print("=" * 60)
 
     return {

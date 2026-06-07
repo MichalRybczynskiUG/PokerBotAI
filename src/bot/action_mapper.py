@@ -1,27 +1,18 @@
 from src.poker_enviroment.constants import (
     ACTION_FOLD,
     ACTION_CALL,
-    ACTION_BET_50,
-    ACTION_BET_100,
-    ACTION_ALL_IN,
+    ACTION_RAISE,
 )
 
 def map_to_env(action, env):
-    pot = env.engine.pot
 
     if action == ACTION_FOLD:
-        return ACTION_FOLD, None
+        return ACTION_FOLD
 
     elif action == ACTION_CALL:
-        return ACTION_CALL, None
+        return ACTION_CALL
 
-    elif action == ACTION_BET_50:
-        return action, max(1, int(pot * 0.5))
+    elif action == ACTION_RAISE:
+        return ACTION_RAISE
 
-    elif action == ACTION_BET_100:
-        return action, max(1, int(pot))
-
-    elif action == ACTION_ALL_IN:
-        return action, None
-    else:
-        raise ValueError(f"Unknown action: {action}")
+    raise ValueError(f"Unknown action: {action}")

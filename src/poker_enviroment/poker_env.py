@@ -7,18 +7,14 @@ from src.poker_enviroment.observation import encode_observation
 import numpy as np
 
 def map_action_to_bucket(action):
+
     if action == ACTION_CALL:
         return 0
-    elif action == ACTION_BET_50:
+
+    elif action == ACTION_RAISE:
         return 1
 
-    elif action == ACTION_BET_100:
-        return 2
-
-    elif action == ACTION_ALL_IN:
-        return 3
-    else:
-        return None
+    return None
 
 def create_deck() -> list[str]:
     return [r + s for r, s in itertools.product(RANKS, SUITS)]
@@ -49,7 +45,7 @@ class PokerEnv:
         self.current_player = None
         self.last_stacks = None
 
-        self.action_history = np.zeros((2, 4, 5, 4), dtype=np.float32)
+        self.action_history = np.zeros((2, 4, 5, 2), dtype=np.float32)
 
 
     @property
@@ -96,6 +92,9 @@ class PokerEnv:
         bb.bet = bb.street_bet = BIG_BLIND
 
         self.engine = PokerEngine([sb, bb])
+
+        self.engine.raise_size = SMALL_BET
+
         self.engine.pot = SMALL_BLIND + BIG_BLIND
         self.engine.to_call = BIG_BLIND
 
@@ -104,9 +103,14 @@ class PokerEnv:
         return self._get_observation(self.current_player)
 
     def legal_actions(self):
-        return get_legal_actions(self.current_player, self.engine.to_call)
 
-    def step(self, action, raise_amount=None):
+        return get_legal_actions(
+            self.current_player,
+            self.engine.to_call,
+            self.engine.raises_this_round
+        )
+
+    def step(self, action):
 
         if self.done:
             raise RuntimeError("Hand already finished")
@@ -132,19 +136,14 @@ class PokerEnv:
                 bucket
             ] = 1.0
 
-        self.engine.step_betting(
-            action,
-            raise_amount
-        )
+        self.engine.step_betting(action)
 
         active = [
             p for p in self.engine.players
             if not p.folded
         ]
 
-        # -----------------------------
-        # Fold -> natychmiastowy koniec
-        # -----------------------------
+        # fold -> natychmiastowy koniec
         if len(active) == 1:
             winner = active[0]
 
@@ -206,25 +205,44 @@ class PokerEnv:
         return obs, rewards, self.done, {}
 
     def _advance_street(self):
+
         for p in self.players:
             p.street_bet = 0
 
         self.engine.to_call = 0
         self.engine.actions_without_raise = 0
+        self.engine.raises_this_round = 0
 
         if self.street == PREFLOP:
-            self.board = [deal_card(self.deck) for _ in range(3)]
+
+            self.board = [
+                deal_card(self.deck)
+                for _ in range(3)
+            ]
+
             self.street = FLOP
+            self.engine.raise_size = SMALL_BET
 
         elif self.street == FLOP:
-            self.board.append(deal_card(self.deck))
+
+            self.board.append(
+                deal_card(self.deck)
+            )
+
             self.street = TURN
+            self.engine.raise_size = BIG_BET
 
         elif self.street == TURN:
-            self.board.append(deal_card(self.deck))
+
+            self.board.append(
+                deal_card(self.deck)
+            )
+
             self.street = RIVER
+            self.engine.raise_size = BIG_BET
 
         elif self.street == RIVER:
+
             self._showdown()
             return
 

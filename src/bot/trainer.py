@@ -40,10 +40,10 @@ class NFSPTrainer:
         self.q_opt_p1, self.policy_opt_p1 = build_optimizers(self.model_p1)
         self.q_opt_p2, self.policy_opt_p2 = build_optimizers(self.model_p2)
 
-        self.rl_buffer_p1 = ReplayBuffer(1_000_000)
+        self.rl_buffer_p1 = ReplayBuffer(600_000)
         self.sl_buffer_p1 = ReservoirBuffer(1_000_000)
 
-        self.rl_buffer_p2 = ReplayBuffer(1_000_000)
+        self.rl_buffer_p2 = ReplayBuffer(600_000)
         self.sl_buffer_p2 = ReservoirBuffer(1_000_000)
 
         self.gamma = 0.99
@@ -59,7 +59,7 @@ class NFSPTrainer:
             current = self.env.current_player
 
             if current.all_in:
-                state, reward, done, _ = self.env.step(1, None)
+                state, reward, done, _ = self.env.step(1)
                 state = state.to(self.device)
                 continue
 
@@ -90,11 +90,10 @@ class NFSPTrainer:
                 epsilon=epsilon
             )
 
-            env_action, raise_amount = map_to_env(action, self.env)
+            env_action = map_to_env(action, self.env)
 
             next_state, rewards, done, _ = self.env.step(
-                env_action,
-                raise_amount
+                env_action
             )
 
             reward = 0.0
